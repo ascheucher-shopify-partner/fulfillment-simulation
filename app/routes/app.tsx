@@ -1,4 +1,8 @@
-import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
+import type {
+  ActionFunctionArgs,
+  HeadersFunction,
+  LoaderFunctionArgs,
+} from "react-router";
 import { Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
@@ -12,6 +16,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return { apiKey: process.env.SHOPIFY_API_KEY || "" };
 };
 
+export const action = async (args: ActionFunctionArgs) => {
+  const module = await import("./app._index");
+  if (typeof module.action !== "function") {
+    throw new Response("Not Found", { status: 404 });
+  }
+  return module.action(args);
+};
+
 export default function App() {
   const { apiKey } = useLoaderData<typeof loader>();
 
@@ -19,8 +31,6 @@ export default function App() {
     <AppProvider embedded apiKey={apiKey}>
       <s-app-nav>
         <s-link href="/app">Home</s-link>
-        <s-link href="/app/fulfillment">Fulfillment simulator</s-link>
-        <s-link href="/app/additional">Additional page</s-link>
       </s-app-nav>
       <Outlet />
     </AppProvider>
