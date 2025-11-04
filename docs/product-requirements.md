@@ -58,3 +58,8 @@ Document each mock action clearly in the UI so demo viewers know it represents a
 ## Open Questions
 
 - None outstanding at this time. Transition logs will keep full history, and the logfile will live in the temp directory without rotation (manual cleanup when needed).
+
+## Observations
+
+- After executing `CREATE_FULFILLMENT`, the Admin API returns `orderStatus: FULFILLED` with `fulfillmentStatus: null`, whereas the published diagram implies `fulfillmentStatus: SUCCESS`. We treat Shopify’s response as canonical and persist the `FULFILLED/null` combination to avoid false mismatch errors.
+- The “Place hold” transition only succeeds while the fulfillment order request status is `UNSUBMITTED`. Once the merchant presses “Request fulfillment” in Shopify Admin (transitioning the request status to `SUBMITTED`), Shopify rejects hold attempts.
