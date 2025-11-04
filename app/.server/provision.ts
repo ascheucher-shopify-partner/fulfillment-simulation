@@ -1,19 +1,27 @@
 import "dotenv/config";
 
 import type {
+  Catalog,
   FulfillmentServiceCreatePayload,
+  FulfillmentServiceUpdatePayload,
   InventoryLevel,
   Location,
   LocationEditInput,
   MutationFulfillmentServiceCreateArgs,
+  MutationFulfillmentServiceUpdateArgs,
   MutationInventoryActivateArgs,
   MutationInventorySetOnHandQuantitiesArgs,
   MutationLocationEditArgs,
   MutationProductCreateArgs,
+  MutationProductCreateMediaArgs,
   MutationProductVariantsBulkUpdateArgs,
+  MutationPublishablePublishArgs,
   Product,
   ProductCreatePayload,
+  ProductCreateMediaPayload,
   ProductVariantsBulkUpdatePayload,
+  Publication,
+  PublishablePublishPayload,
   Shop,
 } from "../types/admin.types";
 
@@ -49,12 +57,30 @@ const PRODUCT_TYPE = process.env.DEMO_PRODUCT_TYPE ?? "Demo";
 const PRODUCT_PRICE = process.env.DEMO_PRODUCT_PRICE ?? "29.99";
 const PRODUCT_SKU = process.env.DEMO_PRODUCT_SKU ?? "DEMO-FULFILLMENT-SKU";
 const INITIAL_STOCK = Number(process.env.DEMO_PRODUCT_QUANTITY ?? 25);
+const PRODUCT_IMAGE_URL =
+  process.env.DEMO_PRODUCT_IMAGE_URL ??
+  "https://images.unsplash.com/photo-1451976426598-a7593bd6d0b2?auto=format&fit=crop&w=600&h=400&q=80";
+const PRODUCT_IMAGE_ALT =
+  process.env.DEMO_PRODUCT_IMAGE_ALT ??
+  "Warehouse aisle with stacked boxes on shelves";
 
 const INVENTORY_REASON =
   process.env.DEMO_INVENTORY_REASON ?? "cycle_count_available";
 const INVENTORY_REFERENCE =
   process.env.DEMO_INVENTORY_REFERENCE ??
   "gid://fulfillment-simulation/Seed/INITIAL";
+
+const TARGET_PUBLICATIONS = [
+  { key: "onlineStore", tokens: ["onlinestore"] as const },
+  { key: "pos", tokens: ["pointofsale", "pos"] as const },
+  { key: "shop", tokens: ["shopapp", "shop"] as const },
+] as const;
+
+type PublicationTargetKey = (typeof TARGET_PUBLICATIONS)[number]["key"];
+
+let cachedPublicationIds:
+  | Partial<Record<PublicationTargetKey, string>>
+  | null = null;
 
 async function main() {
   const shop = getShopDomain();
@@ -123,6 +149,7 @@ async function ensureFulfillmentService(
             id
             serviceName
             type
+            requiresShippingMethod
             callbackUrl
             location {
               id
@@ -139,6 +166,7 @@ async function ensureFulfillmentService(
   );
 
   if (existing?.location?.id) {
+    await ensureServiceSupportsShipping(graphql, existing);
     await updateLocation(graphql, existing.location.id);
     return { serviceId: existing.id, locationId: existing.location.id };
   }
@@ -147,6 +175,7 @@ async function ensureFulfillmentService(
     name: SERVICE_NAME,
     inventoryManagement: true,
     trackingSupport: true,
+    requiresShippingMethod: true,
   };
 
   const result = await graphql<{
@@ -202,6 +231,58 @@ async function ensureFulfillmentService(
   };
 }
 
+async function ensureServiceSupportsShipping(
+  graphql: <T>(query: string, variables?: Record<string, unknown>) => Promise<T>,
+  service: {
+    id: string;
+    requiresShippingMethod?: boolean | null;
+  },
+) {
+  if (service.requiresShippingMethod) {
+    return;
+  }
+
+  const variables: MutationFulfillmentServiceUpdateArgs = {
+    id: service.id,
+    requiresShippingMethod: true,
+  };
+
+  const result = await graphql<{
+    fulfillmentServiceUpdate?: FulfillmentServiceUpdatePayload;
+  }>(
+    `#graphql
+      mutation ProvisionUpdateFulfillmentService(
+        $id: ID!
+        $requiresShippingMethod: Boolean
+      ) {
+        fulfillmentServiceUpdate(
+          id: $id
+          requiresShippingMethod: $requiresShippingMethod
+        ) {
+          fulfillmentService {
+            id
+            requiresShippingMethod
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `,
+    variables,
+  );
+
+  const userErrors = result.fulfillmentServiceUpdate?.userErrors ?? [];
+  if (userErrors.length > 0) {
+    throw new Error(
+      `Failed to update fulfillment service shipping support: ${userErrors
+        .map((error) => error.message)
+        .join(", ")}`,
+    );
+  }
+}
+
 async function updateLocation(
   graphql: <T>(query: string, variables?: Record<string, unknown>) => Promise<T>,
   locationId: string,
@@ -243,6 +324,271 @@ async function updateLocation(
   if (userErrors.length > 0) {
     throw new Error(
       `Failed to update location: ${userErrors
+        .map((error) => error.message)
+        .join(", ")}`,
+    );
+  }
+}
+
+function normalizePublicationValue(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function matchesPublicationTarget(
+  node: Pick<Publication, "name"> & {
+    catalog?: Pick<Catalog, "title"> | null;
+  },
+  tokens: readonly string[],
+): boolean {
+  const values = [node.name, node.catalog?.title]
+    .filter((entry): entry is string => Boolean(entry))
+    .map(normalizePublicationValue);
+
+  return values.some((value) =>
+    tokens.some((token) => value === token || value.endsWith(token)),
+  );
+}
+
+async function resolveTargetPublicationIds(
+  graphql: <T>(query: string, variables?: Record<string, unknown>) => Promise<T>,
+): Promise<Partial<Record<PublicationTargetKey, string>>> {
+  if (cachedPublicationIds) {
+    return cachedPublicationIds;
+  }
+
+  const data = await graphql<{
+    publications: {
+      edges: Array<{
+        node: Pick<Publication, "id" | "name"> & {
+          catalog?: Pick<Catalog, "title"> | null;
+        };
+      }>;
+    };
+  }>(
+    `#graphql
+      query ProvisionPublications {
+        publications(first: 50) {
+          edges {
+            node {
+              id
+              name
+              catalog {
+                title
+              }
+            }
+          }
+        }
+      }
+    `,
+  );
+
+  const ids: Partial<Record<PublicationTargetKey, string>> = {};
+  for (const target of TARGET_PUBLICATIONS) {
+    const match = data.publications.edges.find(({ node }) =>
+      matchesPublicationTarget(node, target.tokens),
+    );
+    if (match) {
+      ids[target.key] = match.node.id;
+    }
+  }
+
+  const missing = TARGET_PUBLICATIONS.filter(
+    (target) => !ids[target.key],
+  ).map((target) => target.key);
+
+  if (missing.length > 0) {
+    console.warn(
+      `⚠️ Provision: Could not find publication(s) for ${missing.join(
+        ", ",
+      )}. Demo product will skip publishing to these channels.`,
+    );
+  }
+
+  cachedPublicationIds = ids;
+  return ids;
+}
+
+async function ensureProductPublished(
+  graphql: <T>(query: string, variables?: Record<string, unknown>) => Promise<T>,
+  productId: string,
+) {
+  const publicationMap = await resolveTargetPublicationIds(graphql);
+  const publicationIds = TARGET_PUBLICATIONS.map((target) => {
+    const id = publicationMap[target.key];
+    return id ?? null;
+  }).filter((id): id is string => Boolean(id));
+
+  if (publicationIds.length === 0) {
+    return;
+  }
+
+  const productData = await graphql<{
+    product?: {
+      resourcePublications: {
+        nodes: Array<{
+          publication: Pick<Publication, "id" | "name">;
+        }>;
+      };
+    };
+  }>(
+    `#graphql
+      query ProvisionProductPublications($id: ID!) {
+        product(id: $id) {
+          resourcePublications(first: 50) {
+            nodes {
+              publication {
+                id
+                name
+              }
+            }
+          }
+        }
+      }
+    `,
+    { id: productId },
+  );
+
+  const publishedIds = new Set(
+    (productData.product?.resourcePublications.nodes ?? []).map(
+      (node) => node.publication.id,
+    ),
+  );
+
+  const missingPublicationIds = publicationIds.filter(
+    (publicationId) => !publishedIds.has(publicationId),
+  );
+
+  if (missingPublicationIds.length === 0) {
+    return;
+  }
+
+  const variables: MutationPublishablePublishArgs = {
+    id: productId,
+    input: missingPublicationIds.map((publicationId) => ({ publicationId })),
+  };
+
+  const publishResult = await graphql<{
+    publishablePublish?: PublishablePublishPayload;
+  }>(
+    `#graphql
+      mutation ProvisionPublishProduct(
+        $id: ID!
+        $input: [PublicationInput!]!
+      ) {
+        publishablePublish(id: $id, input: $input) {
+          publishable {
+            ... on Product {
+              id
+            }
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `,
+    variables,
+  );
+
+  const publishErrors = publishResult.publishablePublish?.userErrors ?? [];
+  if (publishErrors.length > 0) {
+    throw new Error(
+      `Failed to publish product: ${publishErrors
+        .map((error) => error.message)
+        .join(", ")}`,
+    );
+  }
+}
+
+function normalizeImageUrl(url: string | null | undefined): string | null {
+  if (!url) {
+    return null;
+  }
+  const trimmed = url.trim();
+  const [base] = trimmed.split("?");
+  return base;
+}
+
+async function ensureProductImage(
+  graphql: <T>(query: string, variables?: Record<string, unknown>) => Promise<T>,
+  productId: string,
+) {
+  if (!PRODUCT_IMAGE_URL) {
+    return;
+  }
+
+  const productData = await graphql<{
+    product?: {
+      images: {
+        nodes: Array<{
+          id?: string | null;
+          url: string;
+        }>;
+      };
+    };
+  }>(
+    `#graphql
+      query ProvisionProductImages($id: ID!) {
+        product(id: $id) {
+          images(first: 10) {
+            nodes {
+              id
+              url
+            }
+          }
+        }
+      }
+    `,
+    { id: productId },
+  );
+
+  const normalizedTargetUrl = normalizeImageUrl(PRODUCT_IMAGE_URL);
+  const hasImage = Boolean(
+    normalizedTargetUrl &&
+      (productData.product?.images.nodes ?? []).some((image) =>
+        normalizeImageUrl(image.url) === normalizedTargetUrl,
+      ),
+  );
+
+  if (hasImage) {
+    return;
+  }
+
+  const variables: MutationProductCreateMediaArgs = {
+    productId,
+    media: [
+      {
+        mediaContentType: "IMAGE",
+        originalSource: PRODUCT_IMAGE_URL,
+        alt: PRODUCT_IMAGE_ALT,
+      },
+    ],
+  };
+
+  const mediaResult = await graphql<{
+    productCreateMedia?: ProductCreateMediaPayload;
+  }>(
+    `#graphql
+      mutation ProvisionAttachProductImage(
+        $productId: ID!
+        $media: [CreateMediaInput!]!
+      ) {
+        productCreateMedia(productId: $productId, media: $media) {
+          mediaUserErrors {
+            field
+            message
+          }
+        }
+      }
+    `,
+    variables,
+  );
+
+  const mediaErrors = mediaResult.productCreateMedia?.mediaUserErrors ?? [];
+  if (mediaErrors.length > 0) {
+    throw new Error(
+      `Failed to attach product image: ${mediaErrors
         .map((error) => error.message)
         .join(", ")}`,
     );
@@ -298,6 +644,9 @@ async function ensureDemoProduct(
       variantId: variantEdge.node.id,
       inventoryItemId,
     });
+
+    await ensureProductPublished(graphql, product.id);
+    await ensureProductImage(graphql, product.id);
     return {
       productId: product.id,
       variantId: variantEdge.node.id,
@@ -365,6 +714,9 @@ async function ensureDemoProduct(
     variantId: createdVariant.id,
     inventoryItemId: createdInventoryItemId,
   });
+
+  await ensureProductPublished(graphql, payload.product.id);
+  await ensureProductImage(graphql, payload.product.id);
 
   return {
     productId: payload.product.id,
