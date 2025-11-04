@@ -51,7 +51,7 @@ const PRODUCT_SKU = process.env.DEMO_PRODUCT_SKU ?? "DEMO-FULFILLMENT-SKU";
 const INITIAL_STOCK = Number(process.env.DEMO_PRODUCT_QUANTITY ?? 25);
 
 const INVENTORY_REASON =
-  process.env.DEMO_INVENTORY_REASON ?? "physical_count";
+  process.env.DEMO_INVENTORY_REASON ?? "cycle_count_available";
 const INVENTORY_REFERENCE =
   process.env.DEMO_INVENTORY_REFERENCE ??
   "gid://fulfillment-simulation/Seed/INITIAL";
@@ -473,15 +473,56 @@ async function ensureInventory(
 
   const activationErrors = activation.inventoryActivate?.userErrors ?? [];
   const activationErrorMessages = activationErrors.map((error) => error.message);
+  const alreadyActive = activationErrorMessages.some((message) =>
+    message.toLowerCase().includes("already active"),
+  );
   const activationFailed =
-    activationErrors.length > 0 &&
-    !activationErrorMessages.some((message) =>
-      message.toLowerCase().includes("already exists"),
-    );
+    activationErrors.length > 0 && !alreadyActive;
   if (activationFailed) {
     throw new Error(
       `Failed to activate inventory level: ${activationErrorMessages.join(", ")}`,
     );
+  }
+
+  if (alreadyActive) {
+    const retryActivation = await graphql<{
+      inventoryActivate?: {
+        inventoryLevel?: Pick<InventoryLevel, "id">;
+        userErrors: Array<{ message: string }>;
+      };
+    }>(
+      `#graphql
+        mutation ProvisionInventoryActivateRetry(
+          $inventoryItemId: ID!
+          $locationId: ID!
+        ) {
+          inventoryActivate(
+            inventoryItemId: $inventoryItemId
+            locationId: $locationId
+          ) {
+            inventoryLevel {
+              id
+            }
+            userErrors {
+              message
+            }
+          }
+        }
+      `,
+      {
+        inventoryItemId: params.inventoryItemId,
+        locationId: params.locationId,
+      },
+    );
+
+    const retryErrors = retryActivation.inventoryActivate?.userErrors ?? [];
+    if (retryErrors.length > 0) {
+      throw new Error(
+        `Failed to activate inventory level: ${retryErrors
+          .map((error) => error.message)
+          .join(", ")}`,
+      );
+    }
   }
 
   const setOnHandVariables: MutationInventorySetOnHandQuantitiesArgs = {
