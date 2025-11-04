@@ -22,6 +22,7 @@ import {
   rejectCancellationRequest,
   rejectFulfillmentRequest,
   releaseFulfillmentHold,
+  updateTrackingInfo,
 } from "../services/fulfillmentTransitions";
 import type { Prisma } from "@prisma/client";
 import {
@@ -47,12 +48,14 @@ import type {
   FulfillmentStatus,
   FulfillmentHoldReason,
   FulfillmentOrderHoldInput,
+  FulfillmentTrackingInput,
 } from "../types/admin.types";
 
 const SUPPORTED_TRANSITIONS: TransitionId[] = [
   "ACCEPT_FULFILLMENT_REQUEST",
   "REJECT_FULFILLMENT_REQUEST",
   "CREATE_FULFILLMENT",
+  "UPDATE_TRACKING",
   "ACCEPT_CANCELLATION",
   "REJECT_CANCELLATION",
   "PLACE_HOLD",
@@ -107,6 +110,8 @@ type FulfillmentOrderView = {
   assignedLocationId: string | null;
   supportedActions: Array<{ action: string; externalUrl: string | null }>;
   state: FulfillmentCompositeState;
+  latestFulfillmentId: string | null;
+  latestTracking: Array<{ number: string | null; url: string | null; company: string | null }>;
 };
 
 type LoaderData = {
@@ -209,6 +214,8 @@ function buildLoaderData({
       assignedLocationId: fo.assignedLocationId,
       supportedActions: parseSupportedActions(fo.supportedActionsJson),
       state,
+      latestFulfillmentId: fo.latestFulfillmentId ?? null,
+      latestTracking: parseTrackingJson(fo.latestFulfillmentTrackingJson),
     };
   });
 
@@ -265,6 +272,39 @@ function parseSupportedActions(rawJson: string | null): Array<{ action: string; 
   }
 }
 
+function parseTrackingJson(
+  rawJson: string | null,
+): Array<{ number: string | null; url: string | null; company: string | null }> {
+  if (!rawJson) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawJson);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed
+      .map((entry) => {
+        if (!entry || typeof entry !== "object") {
+          return null;
+        }
+        return {
+          number: typeof entry.number === "string" ? entry.number : null,
+          url: typeof entry.url === "string" ? entry.url : null,
+          company: typeof entry.company === "string" ? entry.company : null,
+        };
+      })
+      .filter((value): value is {
+        number: string | null;
+        url: string | null;
+        company: string | null;
+      } => value !== null);
+  } catch {
+    return [];
+  }
+}
+
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
@@ -294,7 +334,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (transition.kind === "mock" || !SUPPORTED_TRANSITIONS.includes(transitionId)) {
       await applyMockTransition({ orderId, fulfillmentOrderId, transitionId, actor: session.shop });
     } else {
-      await executeApiTransition({ transitionId, fulfillmentOrderId, graphql });
+      await executeApiTransition({
+        transitionId,
+        fulfillmentOrderId,
+        graphql,
+        formData,
+      });
       await persistTransitionExpectation({
         orderId,
         fulfillmentOrderId,
@@ -443,10 +488,12 @@ async function executeApiTransition({
   transitionId,
   fulfillmentOrderId,
   graphql,
+  formData,
 }: {
   transitionId: TransitionId;
   fulfillmentOrderId: string;
   graphql: GraphQLClient;
+  formData: FormData;
 }) {
   switch (transitionId) {
     case "ACCEPT_FULFILLMENT_REQUEST": {
@@ -466,7 +513,10 @@ async function executeApiTransition({
       return;
     }
     case "CREATE_FULFILLMENT": {
-      const lineItems = await fetchFulfillmentOrderLineItems(graphql, fulfillmentOrderId);
+      const lineItems = await fetchFulfillmentOrderLineItems(
+        graphql,
+        fulfillmentOrderId,
+      );
       const result = await createFulfillment(graphql, {
         lineItems: [
           {
@@ -477,6 +527,68 @@ async function executeApiTransition({
         notifyCustomer: false,
       });
       handleUserErrors(result.userErrors);
+      const newFulfillmentId = result.fulfillment?.id ?? null;
+      if (newFulfillmentId) {
+        await prisma.fulfillmentOrderRecord.update({
+          where: { id: fulfillmentOrderId },
+          data: {
+            latestFulfillmentId: newFulfillmentId,
+            latestFulfillmentTrackingJson: null,
+          },
+        });
+      }
+      return;
+    }
+    case "UPDATE_TRACKING": {
+      const fulfillmentId = formData.get("fulfillmentId")?.toString().trim();
+      if (!fulfillmentId) {
+        throw new Error(
+          "Missing Shopify fulfillment ID. Trigger 'Create fulfillment' to generate a fulfillment before adding tracking.",
+        );
+      }
+
+      const trackingNumber = formData.get("trackingNumber")?.toString().trim() ?? "";
+      const trackingUrl = formData.get("trackingUrl")?.toString().trim() ?? "";
+      const trackingCompany = formData.get("trackingCompany")?.toString().trim() ?? "";
+      const notifyCustomer = formData.get("notifyCustomer") === "on";
+
+      if (!trackingNumber && !trackingUrl && !trackingCompany) {
+        throw new Error(
+          "Provide at least one tracking detail (number, URL, or carrier) before updating tracking.",
+        );
+      }
+
+      const trackingInfo: FulfillmentTrackingInput = {};
+      if (trackingNumber) {
+        trackingInfo.number = trackingNumber;
+      }
+      if (trackingUrl) {
+        trackingInfo.url = trackingUrl;
+      }
+      if (trackingCompany) {
+        trackingInfo.company = trackingCompany;
+      }
+
+      const result = await updateTrackingInfo(graphql, {
+        fulfillmentId,
+        trackingInfo,
+        notifyCustomer,
+      });
+      handleUserErrors(result.userErrors);
+
+      const updatedTracking = result.fulfillment?.trackingInfo ?? [];
+      const trackingPayload = updatedTracking.length > 0 ? JSON.stringify(updatedTracking) : null;
+
+      await prisma.fulfillmentOrderRecord.update({
+        where: { id: fulfillmentOrderId },
+        data: {
+          latestFulfillmentId: fulfillmentId,
+          latestFulfillmentTrackingJson: trackingPayload,
+        },
+      });
+      await logInfo(
+        `Updated tracking for ${fulfillmentOrderId} with ${trackingPayload ?? "no"} details`,
+      );
       return;
     }
     case "ACCEPT_CANCELLATION": {
@@ -708,6 +820,26 @@ function FulfillmentOrderCard({
         <dd>{fulfillmentOrder.state.orderFinancialStatus ?? "UNKNOWN"}</dd>
         <dt>Fulfillment status</dt>
         <dd>{fulfillmentOrder.state.fulfillmentStatus ?? "UNKNOWN"}</dd>
+        {fulfillmentOrder.latestFulfillmentId && (
+          <>
+            <dt>Fulfillment ID</dt>
+            <dd>{fulfillmentOrder.latestFulfillmentId}</dd>
+          </>
+        )}
+        {fulfillmentOrder.latestTracking.length > 0 && (
+          <>
+            <dt>Tracking details</dt>
+            <dd>
+              <ul style={{ margin: 0, paddingLeft: "1rem" }}>
+                {fulfillmentOrder.latestTracking.map((entry, index) => (
+                  <li key={`${fulfillmentOrder.id}-trk-${index}`}>
+                    {[entry.number, entry.company, entry.url].filter(Boolean).join(" · ") || "(no details recorded)"}
+                  </li>
+                ))}
+              </ul>
+            </dd>
+          </>
+        )}
         {fulfillmentOrder.supportedActions.length > 0 && (
           <>
             <dt>Supported actions</dt>
@@ -726,19 +858,99 @@ function FulfillmentOrderCard({
         ) : (
           <>
             {availableTransitions.map((transition: TransitionDefinition) => (
-              <form key={transition.id} method="post" style={{ margin: 0 }}>
-                <input type="hidden" name="orderId" value={orderId} />
-                <input type="hidden" name="fulfillmentOrderId" value={fulfillmentOrder.id} />
-                <input type="hidden" name="transitionId" value={transition.id} />
-                <button type="submit" disabled={isSubmitting}>
-                  {transition.label}
-                  {transition.kind === "mock" ? " (mock)" : ""}
-                </button>
-              </form>
+              transition.id === "UPDATE_TRACKING" ? (
+                <UpdateTrackingForm
+                  key={transition.id}
+                  orderId={orderId}
+                  fulfillmentOrderId={fulfillmentOrder.id}
+                  fulfillmentId={fulfillmentOrder.latestFulfillmentId}
+                  latestTracking={fulfillmentOrder.latestTracking}
+                  isSubmitting={isSubmitting}
+                />
+              ) : (
+                <form key={transition.id} method="post" style={{ margin: 0 }}>
+                  <input type="hidden" name="orderId" value={orderId} />
+                  <input
+                    type="hidden"
+                    name="fulfillmentOrderId"
+                    value={fulfillmentOrder.id}
+                  />
+                  <input type="hidden" name="transitionId" value={transition.id} />
+                  <button type="submit" disabled={isSubmitting}>
+                    {transition.label}
+                    {transition.kind === "mock" ? " (mock)" : ""}
+                  </button>
+                </form>
+              )
             ))}
           </>
         )}
       </div>
     </section>
+  );
+}
+
+function UpdateTrackingForm({
+  orderId,
+  fulfillmentOrderId,
+  fulfillmentId,
+  latestTracking,
+  isSubmitting,
+}: {
+  orderId: string;
+  fulfillmentOrderId: string;
+  fulfillmentId: string | null;
+  latestTracking: Array<{ number: string | null; url: string | null; company: string | null }>;
+  isSubmitting: boolean;
+}) {
+  const disabled = !fulfillmentId || isSubmitting;
+  const prefill = latestTracking[0] ?? null;
+
+  return (
+    <form method="post" style={{ margin: 0, display: "flex", flexDirection: "column", gap: "0.5rem", minWidth: "240px" }}>
+      <input type="hidden" name="orderId" value={orderId} />
+      <input type="hidden" name="fulfillmentOrderId" value={fulfillmentOrderId} />
+      <input type="hidden" name="transitionId" value="UPDATE_TRACKING" />
+      <input type="hidden" name="fulfillmentId" value={fulfillmentId ?? ""} />
+      <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+        <span>Tracking number</span>
+        <input
+          name="trackingNumber"
+          type="text"
+          placeholder="1Z123..."
+          defaultValue={prefill?.number ?? undefined}
+        />
+      </label>
+      <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+        <span>Tracking URL</span>
+        <input
+          name="trackingUrl"
+          type="url"
+          placeholder="https://carrier.example/track"
+          defaultValue={prefill?.url ?? undefined}
+        />
+      </label>
+      <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+        <span>Carrier</span>
+        <input
+          name="trackingCompany"
+          type="text"
+          placeholder="UPS"
+          defaultValue={prefill?.company ?? undefined}
+        />
+      </label>
+      <label style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+        <input name="notifyCustomer" type="checkbox" />
+        <span>Notify customer</span>
+      </label>
+      <button type="submit" disabled={disabled}>
+        Update tracking
+      </button>
+      {!fulfillmentId && (
+        <small style={{ color: "#6b7280" }}>
+          Tracking can be added after Shopify creates a fulfillment record.
+        </small>
+      )}
+    </form>
   );
 }

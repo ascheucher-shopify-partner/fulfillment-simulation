@@ -132,8 +132,11 @@ const transitions: TransitionDefinition[] = [
       }),
     apply: (state) => ({
       ...state,
+      orderStatus: "FULFILLED" as OrderDisplayFulfillmentStatus,
       fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.Closed,
-      fulfillmentStatus: FULFILLMENT_STATUS.Success,
+      // Shopify currently returns a null `fulfillmentStatus` for the order snapshot
+      // even after a fulfillment is created, so we avoid predicting SUCCESS here.
+      fulfillmentStatus: null,
     }),
   },
   {
@@ -142,7 +145,7 @@ const transitions: TransitionDefinition[] = [
     kind: "api",
     guard: (state) =>
       matches(state, {
-        fulfillmentStatus: FULFILLMENT_STATUS.Success,
+        fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.Closed,
       }),
     apply: (state) => state,
   },

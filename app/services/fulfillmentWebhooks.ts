@@ -43,6 +43,8 @@ interface FulfillmentOrderSnapshot {
   fulfillAt: string | null;
   supportedActions: Array<{ action: string; externalUrl?: string | null }>;
   assignedLocationId: string | null;
+  latestFulfillmentId: string | null;
+  latestTrackingJson: string | null;
 }
 
 export async function handleFulfillmentOrderWebhook({
@@ -195,6 +197,9 @@ async function fetchFulfillmentState(
     };
   });
 
+  const fulfillmentsConnection = fo.fulfillments;
+  const latestFulfillment = extractLatestFulfillment(fulfillmentsConnection);
+
   const fulfillmentOrderSnapshot: FulfillmentOrderSnapshot = {
     id: fo.id,
     status: fo.status as FulfillmentOrderStatus,
@@ -202,6 +207,8 @@ async function fetchFulfillmentState(
     fulfillAt: fo.fulfillAt ?? null,
     supportedActions,
     assignedLocationId: fo.assignedLocation?.location?.id ?? null,
+    latestFulfillmentId: latestFulfillment.id,
+    latestTrackingJson: latestFulfillment.trackingJson,
   };
 
   return { order: orderSnapshot, fulfillmentOrder: fulfillmentOrderSnapshot };
@@ -250,6 +257,8 @@ async function persistState({
       requestStatus: fulfillmentOrder.requestStatus,
       supportedActionsJson: JSON.stringify(fulfillmentOrder.supportedActions),
       fulfillAt: parseDate(fulfillmentOrder.fulfillAt),
+      latestFulfillmentId: fulfillmentOrder.latestFulfillmentId,
+      latestFulfillmentTrackingJson: fulfillmentOrder.latestTrackingJson,
     },
     create: {
       id: fulfillmentOrder.id,
@@ -259,6 +268,8 @@ async function persistState({
       requestStatus: fulfillmentOrder.requestStatus,
       supportedActionsJson: JSON.stringify(fulfillmentOrder.supportedActions),
       fulfillAt: parseDate(fulfillmentOrder.fulfillAt),
+      latestFulfillmentId: fulfillmentOrder.latestFulfillmentId,
+      latestFulfillmentTrackingJson: fulfillmentOrder.latestTrackingJson,
     },
   });
 
@@ -332,6 +343,74 @@ async function persistState({
       `${verb} ${topic} for ${fulfillmentOrderRecord.id}. State: ${JSON.stringify(currentState)}`,
     );
   }
+}
+
+function extractLatestFulfillment(
+  connection: unknown,
+): { id: string | null; trackingJson: string | null } {
+  if (!connection || typeof connection !== "object") {
+    return { id: null, trackingJson: null };
+  }
+
+  const edges = (connection as {
+    edges?: Array<{ node?: { id?: string | null; trackingInfo?: unknown } | null }>;
+  }).edges;
+  if (!Array.isArray(edges) || edges.length === 0) {
+    return { id: null, trackingJson: null };
+  }
+
+  for (let index = edges.length - 1; index >= 0; index -= 1) {
+    const node = edges[index]?.node;
+    if (node?.id) {
+      const tracking = normalizeTrackingInfo(node.trackingInfo);
+      return {
+        id: node.id,
+        trackingJson: tracking.length > 0 ? JSON.stringify(tracking) : null,
+      };
+    }
+  }
+
+  return { id: null, trackingJson: null };
+}
+
+function normalizeTrackingInfo(raw: unknown): Array<{
+  number: string | null;
+  url: string | null;
+  company: string | null;
+}> {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const normalized: Array<{
+    number: string | null;
+    url: string | null;
+    company: string | null;
+  }> = [];
+
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+
+    const value = entry as {
+      number?: unknown;
+      url?: unknown;
+      company?: unknown;
+    };
+
+    const item = {
+      number: typeof value.number === "string" ? value.number : null,
+      url: typeof value.url === "string" ? value.url : null,
+      company: typeof value.company === "string" ? value.company : null,
+    };
+
+    if (item.number || item.url || item.company) {
+      normalized.push(item);
+    }
+  }
+
+  return normalized;
 }
 
 function mapToCompositeState({
@@ -410,6 +489,19 @@ const FULFILLMENT_STATE_QUERY = `#graphql
       assignedLocation {
         location {
           id
+        }
+      }
+      fulfillments(first: 10) {
+        edges {
+          node {
+            id
+            status
+            trackingInfo {
+              number
+              url
+              company
+            }
+          }
         }
       }
       order {

@@ -49,7 +49,15 @@ export async function createFulfillment(
 ) {
   const data = await graphql<{
     fulfillmentCreateV2: {
-      fulfillment?: { id: string; status: string } | null;
+      fulfillment?: {
+        id: string;
+        status: string;
+        trackingInfo?: Array<{
+          number?: string | null;
+          url?: string | null;
+          company?: string | null;
+        }> | null;
+      } | null;
       userErrors: Array<{ message: string }>;
     };
   }>(CREATE_FULFILLMENT, {
@@ -73,7 +81,15 @@ export async function updateTrackingInfo(
 ) {
   const data = await graphql<{
     fulfillmentTrackingInfoUpdate: {
-      fulfillment?: { id: string; status: string } | null;
+      fulfillment?: {
+        id: string;
+        status: string;
+        trackingInfo?: Array<{
+          number?: string | null;
+          url?: string | null;
+          company?: string | null;
+        }> | null;
+      } | null;
       userErrors: Array<{ message: string }>;
     };
   }>(UPDATE_TRACKING_INFO, {
@@ -214,6 +230,11 @@ const CREATE_FULFILLMENT = `#graphql
       fulfillment {
         id
         status
+        trackingInfo {
+          number
+          url
+          company
+        }
       }
       userErrors {
         message
@@ -236,6 +257,11 @@ const UPDATE_TRACKING_INFO = `#graphql
       fulfillment {
         id
         status
+        trackingInfo {
+          number
+          url
+          company
+        }
       }
       userErrors {
         message

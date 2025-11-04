@@ -56,6 +56,8 @@ model FulfillmentOrderRecord {
   requestStatus      String
   supportedActionsJson String?
   fulfillAt          DateTime?
+  latestFulfillmentId String?
+  latestFulfillmentTrackingJson String?
   createdAt          DateTime                  @default(now())
   updatedAt          DateTime                  @updatedAt
 
