@@ -19,6 +19,58 @@ api_version = "2026-01"
   topics = [ "app/scopes_update" ]
   uri = "/webhooks/app/scopes_update"
 
+  [[webhooks.subscriptions]]
+  topics = [ "fulfillment_orders/order_routing_complete" ]
+  uri = "/webhooks/fulfillment_orders/order_routing_complete"
+
+  [[webhooks.subscriptions]]
+  topics = [ "fulfillment_orders/fulfillment_request_submitted" ]
+  uri = "/webhooks/fulfillment_orders/fulfillment_request_submitted"
+
+  [[webhooks.subscriptions]]
+  topics = [ "fulfillment_orders/fulfillment_request_accepted" ]
+  uri = "/webhooks/fulfillment_orders/fulfillment_request_accepted"
+
+  [[webhooks.subscriptions]]
+  topics = [ "fulfillment_orders/fulfillment_request_rejected" ]
+  uri = "/webhooks/fulfillment_orders/fulfillment_request_rejected"
+
+  [[webhooks.subscriptions]]
+  topics = [ "fulfillment_orders/placed_on_hold" ]
+  uri = "/webhooks/fulfillment_orders/placed_on_hold"
+
+  [[webhooks.subscriptions]]
+  topics = [ "fulfillment_orders/hold_released" ]
+  uri = "/webhooks/fulfillment_orders/hold_released"
+
+  [[webhooks.subscriptions]]
+  topics = [ "fulfillment_orders/scheduled_fulfillment_order_ready" ]
+  uri = "/webhooks/fulfillment_orders/scheduled_fulfillment_order_ready"
+
+  [[webhooks.subscriptions]]
+  topics = [ "fulfillment_orders/rescheduled" ]
+  uri = "/webhooks/fulfillment_orders/rescheduled"
+
+  [[webhooks.subscriptions]]
+  topics = [ "fulfillment_orders/cancellation_request_submitted" ]
+  uri = "/webhooks/fulfillment_orders/cancellation_request_submitted"
+
+  [[webhooks.subscriptions]]
+  topics = [ "fulfillment_orders/cancellation_request_accepted" ]
+  uri = "/webhooks/fulfillment_orders/cancellation_request_accepted"
+
+  [[webhooks.subscriptions]]
+  topics = [ "fulfillment_orders/cancellation_request_rejected" ]
+  uri = "/webhooks/fulfillment_orders/cancellation_request_rejected"
+
+  [[webhooks.subscriptions]]
+  topics = [ "fulfillment_orders/cancelled" ]
+  uri = "/webhooks/fulfillment_orders/cancelled"
+
+  [[webhooks.subscriptions]]
+  topics = [ "fulfillment_orders/fulfillment_service_failed_to_complete" ]
+  uri = "/webhooks/fulfillment_orders/fulfillment_service_failed_to_complete"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "write_products write_fulfillments read_assigned_fulfillment_orders write_assigned_fulfillment_orders read_locations write_locations read_inventory write_inventory"

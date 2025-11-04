@@ -30,3 +30,82 @@ model Session {
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
 }
+
+model ShopifyOrder {
+  id                String                      @id // Shopify Order GID
+  shopDomain        String
+  name              String?
+  customerFirstName String?
+  customerLastName  String?
+  customerEmail     String?
+  currencyCode      String?
+  processedAt       DateTime?
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+
+  fulfillmentOrders FulfillmentOrderRecord[]
+  stateSnapshots    FulfillmentStateSnapshot[]
+  transitionLogs    FulfillmentTransitionLog[]
+}
+
+model FulfillmentOrderRecord {
+  id                 String                   @id // Shopify FulfillmentOrder GID
+  orderId            String
+  assignedLocationId String?
+  status             String
+  requestStatus      String
+  supportedActionsJson String?
+  fulfillAt          DateTime?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  order              ShopifyOrder              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  stateSnapshots     FulfillmentStateSnapshot[]
+  transitionLogs     FulfillmentTransitionLog[]
+
+  @@index([orderId])
+}
+
+model FulfillmentStateSnapshot {
+  id                      String   @id @default(cuid())
+  orderId                 String
+  fulfillmentOrderId      String
+  orderStatus             String?
+  orderFinancialStatus    String?
+  fulfillmentOrderStatus  String?
+  fulfillmentRequestStatus String?
+  fulfillmentStatus       String?
+  lastShopifySyncAt       DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  order                   ShopifyOrder            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fulfillmentOrder        FulfillmentOrderRecord  @relation(fields: [fulfillmentOrderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, fulfillmentOrderId])
+}
+
+enum TransitionKind {
+  STATE_CHANGE
+  ERROR
+  MOCK
+}
+
+model FulfillmentTransitionLog {
+  id                 String       @id @default(cuid())
+  orderId            String
+  fulfillmentOrderId String?
+  kind               TransitionKind
+  action             String
+  actor              String?
+  previousState      String?
+  nextState          String?
+  message            String?
+  createdAt          DateTime     @default(now())
+
+  order              ShopifyOrder             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fulfillmentOrder   FulfillmentOrderRecord?  @relation(fields: [fulfillmentOrderId], references: [id])
+
+  @@index([orderId])
+  @@index([fulfillmentOrderId])
+  @@index([kind])
+}
