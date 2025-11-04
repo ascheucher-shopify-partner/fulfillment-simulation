@@ -1,35 +1,25 @@
 import type { ActionFunctionArgs } from "react-router";
 import { authenticate } from "../shopify.server";
-
-type TopicHandlerContext = {
-  shop: string;
-  topic: string;
-  payload: unknown;
-};
-
-type TopicHandler = (context: TopicHandlerContext) => Promise<void> | void;
+import { handleFulfillmentOrderWebhook } from "../services/fulfillmentWebhooks";
+import { logInfo } from "../services/logger";
 
 const FULFILLMENT_TOPIC_PREFIX = "fulfillment_orders/";
 
-const handlers: Record<string, TopicHandler> = {
-  order_routing_complete: logEvent,
-  fulfillment_request_submitted: logEvent,
-  fulfillment_request_accepted: logEvent,
-  fulfillment_request_rejected: logEvent,
-  placed_on_hold: logEvent,
-  hold_released: logEvent,
-  scheduled_fulfillment_order_ready: logEvent,
-  rescheduled: logEvent,
-  cancellation_request_submitted: logEvent,
-  cancellation_request_accepted: logEvent,
-  cancellation_request_rejected: logEvent,
-  cancelled: logEvent,
-  fulfillment_service_failed_to_complete: logEvent,
-};
-
-function logEvent({ shop, topic }: TopicHandlerContext) {
-  console.log(`[Fulfillment webhook] ${topic} for ${shop}`);
-}
+const SUPPORTED_TOPICS = new Set([
+  "order_routing_complete",
+  "fulfillment_request_submitted",
+  "fulfillment_request_accepted",
+  "fulfillment_request_rejected",
+  "placed_on_hold",
+  "hold_released",
+  "scheduled_fulfillment_order_ready",
+  "rescheduled",
+  "cancellation_request_submitted",
+  "cancellation_request_accepted",
+  "cancellation_request_rejected",
+  "cancelled",
+  "fulfillment_service_failed_to_complete",
+]);
 
 export const action = async ({ request, params }: ActionFunctionArgs) => {
   const webhook = await authenticate.webhook(request);
@@ -45,10 +35,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     );
   }
 
-  const handler = handlers[topicSuffix];
-
-  if (handler) {
-    await handler({
+  if (SUPPORTED_TOPICS.has(topicSuffix)) {
+    await logInfo(`Received ${rawTopic} webhook for ${webhook.shop}`);
+    await handleFulfillmentOrderWebhook({
       shop: webhook.shop,
       topic: rawTopic,
       payload: webhook.payload,
