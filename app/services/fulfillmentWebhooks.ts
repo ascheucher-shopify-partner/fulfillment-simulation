@@ -303,9 +303,11 @@ async function persistState({
     },
   });
 
-  const mismatch =
+  const stateChanged =
     previousState !== null &&
     JSON.stringify(previousState) !== JSON.stringify(currentState);
+  const isManualTopic = topic.startsWith("manual/");
+  const mismatch = isManualTopic && stateChanged;
 
   await prisma.fulfillmentTransitionLog.create({
     data: {
@@ -322,11 +324,12 @@ async function persistState({
 
   if (mismatch) {
     await logError(
-      `State mismatch detected for ${fulfillmentOrderRecord.id} on topic ${topic}. Previous: ${JSON.stringify(previousState)}, Current: ${JSON.stringify(currentState)}`,
+      `State mismatch detected for ${fulfillmentOrderRecord.id} on topic ${topic}. Expected: ${JSON.stringify(previousState)}, Actual: ${JSON.stringify(currentState)}`,
     );
   } else {
+    const verb = stateChanged ? "Updated" : "Processed";
     await logInfo(
-      `Processed ${topic} for ${fulfillmentOrderRecord.id}. State: ${JSON.stringify(currentState)}`,
+      `${verb} ${topic} for ${fulfillmentOrderRecord.id}. State: ${JSON.stringify(currentState)}`,
     );
   }
 }

@@ -23,6 +23,7 @@ import {
   rejectFulfillmentRequest,
   releaseFulfillmentHold,
 } from "../services/fulfillmentTransitions";
+import type { Prisma } from "@prisma/client";
 import {
   applyTransition,
   getAvailableTransitions,
@@ -294,6 +295,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       await applyMockTransition({ orderId, fulfillmentOrderId, transitionId, actor: session.shop });
     } else {
       await executeApiTransition({ transitionId, fulfillmentOrderId, graphql });
+      await persistTransitionExpectation({
+        orderId,
+        fulfillmentOrderId,
+        transitionId,
+        actor: session.shop,
+        kind: "STATE_CHANGE",
+        message: `Transition ${transitionId} submitted via simulator UI; awaiting Shopify confirmation`,
+      });
       await syncFulfillmentOrderState({
         shop: session.shop,
         topic: `manual/${transitionId}`,
@@ -329,16 +338,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 };
 
-async function applyMockTransition({
+async function persistTransitionExpectation({
   orderId,
   fulfillmentOrderId,
   transitionId,
   actor,
+  kind,
+  message,
+  touchSyncTimestamp = false,
 }: {
   orderId: string;
   fulfillmentOrderId: string;
   transitionId: TransitionId;
   actor: string;
+  kind: "MOCK" | "STATE_CHANGE";
+  message: string;
+  touchSyncTimestamp?: boolean;
 }) {
   const snapshot = await prisma.fulfillmentStateSnapshot.findUnique({
     where: {
@@ -366,6 +381,18 @@ async function applyMockTransition({
 
   const nextState = applyTransition(currentState, transitionId);
 
+  const updateData: Prisma.FulfillmentStateSnapshotUpdateInput = {
+    orderStatus: nextState.orderStatus,
+    orderFinancialStatus: nextState.orderFinancialStatus,
+    fulfillmentOrderStatus: nextState.fulfillmentOrderStatus,
+    fulfillmentRequestStatus: nextState.fulfillmentRequestStatus,
+    fulfillmentStatus: nextState.fulfillmentStatus,
+  };
+
+  if (touchSyncTimestamp) {
+    updateData.lastShopifySyncAt = new Date();
+  }
+
   await prisma.fulfillmentStateSnapshot.update({
     where: {
       orderId_fulfillmentOrderId: {
@@ -373,27 +400,42 @@ async function applyMockTransition({
         fulfillmentOrderId,
       },
     },
-    data: {
-      orderStatus: nextState.orderStatus,
-      orderFinancialStatus: nextState.orderFinancialStatus,
-      fulfillmentOrderStatus: nextState.fulfillmentOrderStatus,
-      fulfillmentRequestStatus: nextState.fulfillmentRequestStatus,
-      fulfillmentStatus: nextState.fulfillmentStatus,
-      lastShopifySyncAt: new Date(),
-    },
+    data: updateData,
   });
 
   await prisma.fulfillmentTransitionLog.create({
     data: {
       orderId,
       fulfillmentOrderId,
-      kind: "MOCK",
+      kind,
       action: `manual/${transitionId}`,
       actor,
       previousState: JSON.stringify(currentState),
       nextState: JSON.stringify(nextState),
-      message: `Mock transition ${transitionId} executed from simulator UI`,
+      message,
     },
+  });
+}
+
+async function applyMockTransition({
+  orderId,
+  fulfillmentOrderId,
+  transitionId,
+  actor,
+}: {
+  orderId: string;
+  fulfillmentOrderId: string;
+  transitionId: TransitionId;
+  actor: string;
+}) {
+  await persistTransitionExpectation({
+    orderId,
+    fulfillmentOrderId,
+    transitionId,
+    actor,
+    kind: "MOCK",
+    message: `Mock transition ${transitionId} executed from simulator UI`,
+    touchSyncTimestamp: true,
   });
 }
 
