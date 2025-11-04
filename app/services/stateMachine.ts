@@ -1,10 +1,14 @@
-import {
-  FulfillmentOrderRequestStatus,
-  FulfillmentOrderStatus,
-  FulfillmentStatus,
+import type {
+  FulfillmentOrderRequestStatus as FulfillmentOrderRequestStatusType,
+  FulfillmentOrderStatus as FulfillmentOrderStatusType,
+  FulfillmentStatus as FulfillmentStatusType,
   OrderDisplayFinancialStatus,
   OrderDisplayFulfillmentStatus,
 } from "../types/admin.types";
+
+type FulfillmentOrderRequestStatus = FulfillmentOrderRequestStatusType;
+type FulfillmentOrderStatus = FulfillmentOrderStatusType;
+type FulfillmentStatus = FulfillmentStatusType;
 
 /**
  * Composite snapshot of Shopify's order + fulfillment order state.
@@ -20,6 +24,39 @@ export interface FulfillmentCompositeState {
   fulfillmentRequestStatus: FulfillmentOrderRequestStatus | null;
   fulfillmentStatus: FulfillmentStatus | null;
 }
+
+const FULFILLMENT_ORDER_STATUS = {
+  Cancelled: "CANCELLED" as FulfillmentOrderStatus,
+  Closed: "CLOSED" as FulfillmentOrderStatus,
+  Incomplete: "INCOMPLETE" as FulfillmentOrderStatus,
+  InProgress: "IN_PROGRESS" as FulfillmentOrderStatus,
+  OnHold: "ON_HOLD" as FulfillmentOrderStatus,
+  Open: "OPEN" as FulfillmentOrderStatus,
+  Scheduled: "SCHEDULED" as FulfillmentOrderStatus,
+} as const;
+
+const FULFILLMENT_ORDER_REQUEST_STATUS = {
+  Accepted: "ACCEPTED" as FulfillmentOrderRequestStatus,
+  CancellationAccepted:
+    "CANCELLATION_ACCEPTED" as FulfillmentOrderRequestStatus,
+  CancellationRejected:
+    "CANCELLATION_REJECTED" as FulfillmentOrderRequestStatus,
+  CancellationRequested:
+    "CANCELLATION_REQUESTED" as FulfillmentOrderRequestStatus,
+  Closed: "CLOSED" as FulfillmentOrderRequestStatus,
+  Rejected: "REJECTED" as FulfillmentOrderRequestStatus,
+  Submitted: "SUBMITTED" as FulfillmentOrderRequestStatus,
+  Unsubmitted: "UNSUBMITTED" as FulfillmentOrderRequestStatus,
+} as const;
+
+const FULFILLMENT_STATUS = {
+  Cancelled: "CANCELLED" as FulfillmentStatus,
+  Error: "ERROR" as FulfillmentStatus,
+  Failure: "FAILURE" as FulfillmentStatus,
+  Open: "OPEN" as FulfillmentStatus,
+  Pending: "PENDING" as FulfillmentStatus,
+  Success: "SUCCESS" as FulfillmentStatus,
+} as const;
 
 export type TransitionKind = "api" | "mock" | "system";
 
@@ -59,13 +96,13 @@ const transitions: TransitionDefinition[] = [
     kind: "api",
     guard: (state) =>
       matches(state, {
-        fulfillmentOrderStatus: FulfillmentOrderStatus.Open,
-        fulfillmentRequestStatus: FulfillmentOrderRequestStatus.Submitted,
+        fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.Open,
+        fulfillmentRequestStatus: FULFILLMENT_ORDER_REQUEST_STATUS.Submitted,
       }),
     apply: (state) => ({
       ...state,
-      fulfillmentOrderStatus: FulfillmentOrderStatus.InProgress,
-      fulfillmentRequestStatus: FulfillmentOrderRequestStatus.Accepted,
+      fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.InProgress,
+      fulfillmentRequestStatus: FULFILLMENT_ORDER_REQUEST_STATUS.Accepted,
     }),
   },
   {
@@ -74,12 +111,12 @@ const transitions: TransitionDefinition[] = [
     kind: "api",
     guard: (state) =>
       matches(state, {
-        fulfillmentOrderStatus: FulfillmentOrderStatus.Open,
-        fulfillmentRequestStatus: FulfillmentOrderRequestStatus.Submitted,
+        fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.Open,
+        fulfillmentRequestStatus: FULFILLMENT_ORDER_REQUEST_STATUS.Submitted,
       }),
     apply: (state) => ({
       ...state,
-      fulfillmentRequestStatus: FulfillmentOrderRequestStatus.Rejected,
+      fulfillmentRequestStatus: FULFILLMENT_ORDER_REQUEST_STATUS.Rejected,
     }),
   },
   {
@@ -90,13 +127,13 @@ const transitions: TransitionDefinition[] = [
     kind: "api",
     guard: (state) =>
       matches(state, {
-        fulfillmentOrderStatus: FulfillmentOrderStatus.InProgress,
-        fulfillmentRequestStatus: FulfillmentOrderRequestStatus.Accepted,
+        fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.InProgress,
+        fulfillmentRequestStatus: FULFILLMENT_ORDER_REQUEST_STATUS.Accepted,
       }),
     apply: (state) => ({
       ...state,
-      fulfillmentOrderStatus: FulfillmentOrderStatus.Closed,
-      fulfillmentStatus: FulfillmentStatus.Success,
+      fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.Closed,
+      fulfillmentStatus: FULFILLMENT_STATUS.Success,
     }),
   },
   {
@@ -105,7 +142,7 @@ const transitions: TransitionDefinition[] = [
     kind: "api",
     guard: (state) =>
       matches(state, {
-        fulfillmentStatus: FulfillmentStatus.Success,
+        fulfillmentStatus: FULFILLMENT_STATUS.Success,
       }),
     apply: (state) => state,
   },
@@ -115,14 +152,14 @@ const transitions: TransitionDefinition[] = [
     kind: "api",
     guard: (state) =>
       matches(state, {
-        fulfillmentStatus: FulfillmentStatus.Success,
+        fulfillmentStatus: FULFILLMENT_STATUS.Success,
       }),
     apply: (state) => ({
       ...state,
-      fulfillmentStatus: FulfillmentStatus.Cancelled,
-      fulfillmentOrderStatus: FulfillmentOrderStatus.Open,
+      fulfillmentStatus: FULFILLMENT_STATUS.Cancelled,
+      fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.Open,
       fulfillmentRequestStatus:
-        FulfillmentOrderRequestStatus.CancellationRequested,
+        FULFILLMENT_ORDER_REQUEST_STATUS.CancellationRequested,
     }),
   },
   {
@@ -132,13 +169,13 @@ const transitions: TransitionDefinition[] = [
     guard: (state) =>
       matches(state, {
         fulfillmentRequestStatus:
-          FulfillmentOrderRequestStatus.CancellationRequested,
+          FULFILLMENT_ORDER_REQUEST_STATUS.CancellationRequested,
       }),
     apply: (state) => ({
       ...state,
       fulfillmentRequestStatus:
-        FulfillmentOrderRequestStatus.CancellationAccepted,
-      fulfillmentOrderStatus: FulfillmentOrderStatus.Cancelled,
+        FULFILLMENT_ORDER_REQUEST_STATUS.CancellationAccepted,
+      fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.Cancelled,
     }),
   },
   {
@@ -148,13 +185,13 @@ const transitions: TransitionDefinition[] = [
     guard: (state) =>
       matches(state, {
         fulfillmentRequestStatus:
-          FulfillmentOrderRequestStatus.CancellationRequested,
+          FULFILLMENT_ORDER_REQUEST_STATUS.CancellationRequested,
       }),
     apply: (state) => ({
       ...state,
       fulfillmentRequestStatus:
-        FulfillmentOrderRequestStatus.CancellationRejected,
-      fulfillmentOrderStatus: FulfillmentOrderStatus.InProgress,
+        FULFILLMENT_ORDER_REQUEST_STATUS.CancellationRejected,
+      fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.InProgress,
     }),
   },
   {
@@ -163,11 +200,11 @@ const transitions: TransitionDefinition[] = [
     kind: "api",
     guard: (state) =>
       matches(state, {
-        fulfillmentOrderStatus: FulfillmentOrderStatus.Open,
+        fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.Open,
       }),
     apply: (state) => ({
       ...state,
-      fulfillmentOrderStatus: FulfillmentOrderStatus.OnHold,
+      fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.OnHold,
     }),
   },
   {
@@ -176,11 +213,11 @@ const transitions: TransitionDefinition[] = [
     kind: "api",
     guard: (state) =>
       matches(state, {
-        fulfillmentOrderStatus: FulfillmentOrderStatus.OnHold,
+        fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.OnHold,
       }),
     apply: (state) => ({
       ...state,
-      fulfillmentOrderStatus: FulfillmentOrderStatus.Open,
+      fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.Open,
     }),
   },
   {
@@ -189,12 +226,12 @@ const transitions: TransitionDefinition[] = [
     kind: "api",
     guard: (state) =>
       matches(state, {
-        fulfillmentOrderStatus: FulfillmentOrderStatus.InProgress,
+        fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.InProgress,
       }),
     apply: (state) => ({
       ...state,
-      fulfillmentOrderStatus: FulfillmentOrderStatus.Incomplete,
-      fulfillmentRequestStatus: FulfillmentOrderRequestStatus.Closed,
+      fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.Incomplete,
+      fulfillmentRequestStatus: FULFILLMENT_ORDER_REQUEST_STATUS.Closed,
     }),
   },
   {
@@ -205,13 +242,13 @@ const transitions: TransitionDefinition[] = [
     kind: "mock",
     guard: (state) =>
       matches(state, {
-        fulfillmentRequestStatus: FulfillmentOrderRequestStatus.Submitted,
+        fulfillmentRequestStatus: FULFILLMENT_ORDER_REQUEST_STATUS.Submitted,
       }),
     apply: (state) => ({
       ...state,
-      fulfillmentOrderStatus: FulfillmentOrderStatus.Closed,
-      fulfillmentRequestStatus: FulfillmentOrderRequestStatus.Accepted,
-      fulfillmentStatus: FulfillmentStatus.Success,
+      fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.Closed,
+      fulfillmentRequestStatus: FULFILLMENT_ORDER_REQUEST_STATUS.Accepted,
+      fulfillmentStatus: FULFILLMENT_STATUS.Success,
     }),
   },
   {
@@ -221,11 +258,11 @@ const transitions: TransitionDefinition[] = [
       "Simulates re-routing work to another location. In practice Shopify splits the fulfillment order.",
     kind: "mock",
     guard: (state) =>
-      matches(state, { fulfillmentOrderStatus: FulfillmentOrderStatus.Open }),
+      matches(state, { fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.Open }),
     apply: (state) => ({
       ...state,
-      fulfillmentOrderStatus: FulfillmentOrderStatus.Open,
-      fulfillmentRequestStatus: FulfillmentOrderRequestStatus.Unsubmitted,
+      fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.Open,
+      fulfillmentRequestStatus: FULFILLMENT_ORDER_REQUEST_STATUS.Unsubmitted,
     }),
   },
   {
@@ -237,10 +274,10 @@ const transitions: TransitionDefinition[] = [
     guard: () => true,
     apply: (state) => ({
       ...state,
-      fulfillmentOrderStatus: FulfillmentOrderStatus.Cancelled,
+      fulfillmentOrderStatus: FULFILLMENT_ORDER_STATUS.Cancelled,
       fulfillmentRequestStatus:
-        FulfillmentOrderRequestStatus.CancellationAccepted,
-      fulfillmentStatus: FulfillmentStatus.Cancelled,
+        FULFILLMENT_ORDER_REQUEST_STATUS.CancellationAccepted,
+      fulfillmentStatus: FULFILLMENT_STATUS.Cancelled,
     }),
   },
 ];

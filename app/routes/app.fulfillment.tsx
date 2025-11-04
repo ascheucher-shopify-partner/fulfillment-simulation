@@ -57,6 +57,33 @@ const SUPPORTED_TRANSITIONS: TransitionId[] = [
   "MOCK_SYSTEM_CANCELLATION",
 ];
 
+const MOCK_TRANSITION_GUIDE: Partial<Record<TransitionId, { title: string; steps: string[] }>> = {
+  MOCK_EXTERNAL_FULFILLMENT: {
+    title: "External fulfillment complete",
+    steps: [
+      "In Shopify admin, request fulfillment for the order so the fulfillment order is submitted to the service.",
+      "Allow the external fulfillment provider to accept the request and create the fulfillment (typically by calling the Admin API's fulfillmentCreateV2).",
+      "When the fulfillment is created Shopify emits the same webhook events that this mock transition simulates.",
+    ],
+  },
+  MOCK_MOVE_FULFILLMENT_ORDER: {
+    title: "Move fulfillment order",
+    steps: [
+      "In Shopify admin, open the order and from the fulfillment order card choose More actions → Move fulfillment.",
+      "Pick the new fulfillment location and confirm. Shopify will close the original fulfillment order and create a replacement.",
+      "That action triggers Shopify's move webhooks; the mock button simply demonstrates the resulting state change.",
+    ],
+  },
+  MOCK_SYSTEM_CANCELLATION: {
+    title: "System-driven cancellation",
+    steps: [
+      "Reduce available/on-hand inventory for the assigned location so that the fulfillment order can no longer be fulfilled.",
+      "From the Shopify admin fulfillment order card choose Cancel fulfillment order (or accept the merchant cancellation request).",
+      "Shopify then emits the cancellation webhooks that this mock transition mimics.",
+    ],
+  },
+};
+
 type TransitionLogView = {
   id: string;
   createdAt: string;
@@ -147,7 +174,7 @@ function buildLoaderData({
   if (!activeOrderId || !activeOrder) {
     return {
       orders: orderSummaries,
-      activeOrder: null as const,
+      activeOrder: null,
       activeOrderId,
     };
   }

@@ -29,4 +29,5 @@ Follow these guardrails when automating tasks:
 - **Edits:** Keep files ASCII unless existing content differs; use `apply_patch` for targeted changes; add only essential clarifying comments; never undo user edits or run destructive git commands without direction.
 - **Planning:** Skip plans for trivial work, avoid single-step plans, and update plan status after each completed subtask.
 - **Sandbox & approvals:** Current mode is `workspace-write` filesystem, `restricted` network, approvals `on-request`. Request escalation with `with_escalated_permissions: true` plus a one-line justification whenever sandbox limits block critical work.
+- **Scope:** Limit code changes to the `app/` and `extensions/` directories unless explicitly instructed otherwise.
 - **Communication:** For reviews, lead with findings and references; keep responses concise and structured; cite files as `path:line`; rely on generated Admin API types from `pnpm run graphql-codegen`; confirm assumptions when unsure.

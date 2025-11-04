@@ -2,7 +2,7 @@ import type { Order } from "../types/admin.types";
 
 import prisma from "../db.server";
 import shopify from "../shopify.server";
-import {
+import type {
   FulfillmentOrderRequestStatus,
   FulfillmentOrderStatus,
   OrderDisplayFinancialStatus,
