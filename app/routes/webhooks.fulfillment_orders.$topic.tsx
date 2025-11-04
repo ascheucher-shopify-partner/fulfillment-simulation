@@ -25,9 +25,10 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   const webhook = await authenticate.webhook(request);
 
   const rawTopic = webhook.topic;
-  const topicSuffix = rawTopic.startsWith(FULFILLMENT_TOPIC_PREFIX)
-    ? rawTopic.slice(FULFILLMENT_TOPIC_PREFIX.length)
-    : rawTopic;
+  const normalizedTopic = normalizeFulfillmentTopic(rawTopic);
+  const topicSuffix = normalizedTopic.startsWith(FULFILLMENT_TOPIC_PREFIX)
+    ? normalizedTopic.slice(FULFILLMENT_TOPIC_PREFIX.length)
+    : normalizedTopic;
 
   if (params.topic !== topicSuffix) {
     console.warn(
@@ -36,10 +37,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 
   if (SUPPORTED_TOPICS.has(topicSuffix)) {
-    await logInfo(`Received ${rawTopic} webhook for ${webhook.shop}`);
+    await logInfo(
+      `Received ${normalizedTopic} webhook (${rawTopic}) for ${webhook.shop}`,
+    );
     await handleFulfillmentOrderWebhook({
       shop: webhook.shop,
-      topic: rawTopic,
+      topic: normalizedTopic,
       payload: webhook.payload,
     });
   } else {
@@ -48,3 +51,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 
   return new Response();
 };
+
+function normalizeFulfillmentTopic(rawTopic: string): string {
+  const lower = rawTopic.toLowerCase();
+  if (lower.startsWith("fulfillment_orders/")) {
+    return lower;
+  }
+  if (lower.startsWith("fulfillment_orders_")) {
+    return `fulfillment_orders/${lower.slice("fulfillment_orders_".length)}`;
+  }
+  return lower;
+}

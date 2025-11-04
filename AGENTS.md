@@ -23,6 +23,9 @@ Write imperative commit subjects ("Add fulfillment request handler") with option
 ## Security & Configuration Tips
 Do not commit `.env`, `.shopify-cli.yml`, or Prisma secrets. When adjusting scopes in `shopify.app.toml`, coordinate with `pnpm graphql-codegen` to keep generated types current. Ensure webhook endpoints and the Prisma database are reachable from your dev tunnel before pushing changes.
 
+### Protected Data Access & Distribution
+The app uses Shopify’s *custom distribution* mode so only the target store can install it. This bypasses the public-app review required for protected customer data scopes (for example, Fulfillment Orders). If additional stores need access, revisit the distribution settings and file the protected data request through the Partner Dashboard.
+
 ## Agent Operating Rules
 Follow these guardrails when automating tasks:
 - **Shell commands:** Call tools through `"bash", "-lc"` with `workdir` set; prefer `rg`/`rg --files`; avoid inline `cd` unless required.

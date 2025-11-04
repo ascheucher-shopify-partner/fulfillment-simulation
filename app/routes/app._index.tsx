@@ -8,6 +8,7 @@ import { useFetcher } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
+import { createGraphQLClient } from "../lib/graphqlClient";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   await authenticate.admin(request);
@@ -20,7 +21,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const color = ["Red", "Orange", "Yellow", "Green"][
     Math.floor(Math.random() * 4)
   ];
-  const response = await admin.graphql(
+  const graphql = createGraphQLClient(
+    (query, options) => admin.graphql(query, options ?? {}),
+    { context: "index-action" },
+  );
+
+  const productData = await graphql<{
+    productCreate?: {
+      product?: {
+        id: string;
+        title: string;
+        handle: string;
+        status: string;
+        variants: {
+          edges: Array<{
+            node: {
+              id: string;
+              price?: string | null;
+              barcode?: string | null;
+              createdAt: string;
+            };
+          }>;
+        };
+      } | null;
+    };
+  }>(
     `#graphql
       mutation populateProduct($product: ProductCreateInput!) {
         productCreate(product: $product) {
@@ -43,19 +68,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
       }`,
     {
-      variables: {
-        product: {
-          title: `${color} Snowboard`,
-        },
+      product: {
+        title: `${color} Snowboard`,
       },
     },
   );
-  const responseJson = await response.json();
 
-  const product = responseJson.data!.productCreate!.product!;
+  const product = productData.productCreate?.product;
+  if (!product) {
+    throw new Error("Product creation response missing product payload");
+  }
   const variantId = product.variants.edges[0]!.node!.id!;
 
-  const variantResponse = await admin.graphql(
+  const variantData = await graphql<{
+    productVariantsBulkUpdate?: {
+      productVariants?: Array<{
+        id: string;
+        price?: string | null;
+        barcode?: string | null;
+        createdAt: string;
+      }> | null;
+    };
+  }>(
     `#graphql
     mutation shopifyReactRouterTemplateUpdateVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
       productVariantsBulkUpdate(productId: $productId, variants: $variants) {
@@ -68,19 +102,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }
     }`,
     {
-      variables: {
-        productId: product.id,
-        variants: [{ id: variantId, price: "100.00" }],
-      },
+      productId: product.id,
+      variants: [{ id: variantId, price: "100.00" }],
     },
   );
 
-  const variantResponseJson = await variantResponse.json();
+  const variant = variantData.productVariantsBulkUpdate?.productVariants ?? [];
 
   return {
-    product: responseJson!.data!.productCreate!.product,
-    variant:
-      variantResponseJson!.data!.productVariantsBulkUpdate!.productVariants,
+    product,
+    variant,
   };
 };
 

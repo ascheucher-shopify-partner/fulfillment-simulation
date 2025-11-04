@@ -2,7 +2,7 @@
 
 client_id = "6afd7761a94353d9cb07721165972926"
 name = "fulfillment-simulation"
-application_url = "https://example.com"
+application_url = "https://modes-endless-returns-blades.trycloudflare.com"
 embedded = true
 
 [build]
@@ -73,7 +73,7 @@ api_version = "2026-01"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products write_fulfillments read_assigned_fulfillment_orders write_assigned_fulfillment_orders read_locations write_locations read_inventory write_inventory"
+scopes = "read_customers read_orders write_products write_fulfillments read_assigned_fulfillment_orders write_assigned_fulfillment_orders read_locations write_locations read_inventory write_inventory"
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://modes-endless-returns-blades.trycloudflare.com/api/auth" ]

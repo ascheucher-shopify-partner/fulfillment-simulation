@@ -33,6 +33,11 @@ import {
 } from "../services/stateMachine";
 import { syncFulfillmentOrderState } from "../services/fulfillmentWebhooks";
 import { logError, logInfo } from "../services/logger";
+import {
+  createGraphQLClient,
+  formatGraphQLErrors,
+  type GraphQLClient,
+} from "../lib/graphqlClient";
 import type {
   OrderDisplayFinancialStatus,
   OrderDisplayFulfillmentStatus,
@@ -278,8 +283,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return { error: `Unknown transition ${transitionId}` } as ActionData;
   }
 
-  const graphql = (query: string, options?: { variables?: Record<string, unknown> }) =>
-    admin.graphql(query, options ?? {});
+
+  const graphql = createGraphQLClient(
+    (query, options) => admin.graphql(query, options ?? {}),
+    { context: `transition/${transitionId}` },
+  );
 
   try {
     if (transition.kind === "mock" || !SUPPORTED_TRANSITIONS.includes(transitionId)) {
@@ -295,11 +303,29 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       await logInfo(`Executed ${transitionId} for ${fulfillmentOrderId}`);
     }
 
-    return redirect(`?orderId=${encodeURIComponent(orderId)}`);
+    const currentUrl = new URL(request.url);
+    currentUrl.searchParams.set("orderId", orderId);
+    const target = `${currentUrl.pathname}?${currentUrl.searchParams.toString()}`;
+    return redirect(target);
   } catch (error) {
     const message = (error as Error).message ?? "Unknown error";
-    await logError(`Transition ${transitionId} failed: ${message}`);
-    return { error: message } as ActionData;
+    const details = formatGraphQLErrors(
+      ((error as Record<string, unknown>).graphQLErrors as unknown[]) ?? [],
+    );
+    const responseBody = (error as { responseBody?: unknown }).responseBody;
+    const bodySnippet = (() => {
+    if (!responseBody) {
+      return null;
+    }
+      try {
+        return `Response body: ${JSON.stringify(responseBody, null, 2)}`;
+      } catch {
+        return `Response body: ${String(responseBody)}`;
+      }
+    })();
+    const combined = [message, details, bodySnippet].filter(Boolean).join("\n");
+    await logError(`Transition ${transitionId} failed: ${combined}`);
+    return { error: combined } as ActionData;
   }
 };
 
@@ -378,10 +404,7 @@ async function executeApiTransition({
 }: {
   transitionId: TransitionId;
   fulfillmentOrderId: string;
-  graphql: (
-    query: string,
-    options?: { variables?: Record<string, unknown> },
-  ) => Promise<Response>;
+  graphql: GraphQLClient;
 }) {
   switch (transitionId) {
     case "ACCEPT_FULFILLMENT_REQUEST": {
@@ -472,28 +495,31 @@ function handleUserErrors(userErrors: Array<{ message: string }>) {
 }
 
 async function fetchFulfillmentOrderLineItems(
-  graphql: (
-    query: string,
-    options?: { variables?: Record<string, unknown> },
-  ) => Promise<Response>,
+  graphql: GraphQLClient,
   fulfillmentOrderId: string,
 ) {
-  const response = await graphql(FULFILLMENT_ORDER_LINE_ITEMS_QUERY, {
-    variables: { fulfillmentOrderId },
-  });
-  const jsonData = await response.json();
-  if (jsonData.errors?.length) {
-    throw new Error(jsonData.errors.map((error: { message: string }) => error.message).join("; "));
-  }
+  const data = await graphql<{
+    fulfillmentOrder?: {
+      lineItems?: {
+        edges: Array<{
+          node?: {
+            id: string;
+            remainingQuantity: number;
+          };
+        }>;
+      };
+    };
+  }>(FULFILLMENT_ORDER_LINE_ITEMS_QUERY, { fulfillmentOrderId });
 
-  const edges = jsonData.data?.fulfillmentOrder?.lineItems?.edges ?? [];
-  const lineItems = edges
-    .map((edge: { node?: { id: string; remainingQuantity: number } }) => edge?.node)
-    .filter(Boolean)
-    .map((node: { id: string; remainingQuantity: number }) => ({
-      id: node.id,
-      quantity: node.remainingQuantity,
-    }));
+  const edges = data.fulfillmentOrder?.lineItems?.edges ?? [];
+  const nodes = edges.flatMap((edge) =>
+    edge?.node ? [edge.node] : [],
+  ) as Array<{ id: string; remainingQuantity: number }>;
+
+  const lineItems = nodes.map((node) => ({
+    id: node.id,
+    quantity: node.remainingQuantity,
+  }));
 
   if (lineItems.length === 0) {
     throw new Error("No fulfillable line items found for this fulfillment order.");

@@ -2,6 +2,11 @@ import type { Order } from "../types/admin.types";
 
 import prisma from "../db.server";
 import shopify from "../shopify.server";
+import {
+  createGraphQLClient,
+  formatGraphQLErrors,
+  type GraphQLClient,
+} from "../lib/graphqlClient";
 import type {
   FulfillmentOrderRequestStatus,
   FulfillmentOrderStatus,
@@ -10,13 +15,6 @@ import type {
 } from "../types/admin.types";
 import type { FulfillmentCompositeState } from "./stateMachine";
 import { logError, logInfo } from "./logger";
-
-type GraphqlClient = (
-  query: string,
-  options?: {
-    variables?: Record<string, unknown>;
-  },
-) => Promise<Response>;
 
 interface FulfillmentOrderWebhookContext {
   topic: string;
@@ -64,8 +62,10 @@ export async function handleFulfillmentOrderWebhook({
 
   try {
     const { admin } = await shopify.unauthenticated.admin(shop);
-    const graphql = (query: string, options?: { variables?: Record<string, unknown> }) =>
-      admin.graphql(query, options ?? {});
+    const graphql = createGraphQLClient(
+      (query, options) => admin.graphql(query, options ?? {}),
+      { context: topic },
+    );
 
     await syncFulfillmentOrderState({
       shop,
@@ -74,9 +74,27 @@ export async function handleFulfillmentOrderWebhook({
       fulfillmentOrderId,
     });
   } catch (error) {
-    await logError(
+    const message = [
       `Webhook ${topic}: Failed to process fulfillment order ${fulfillmentOrderId} – ${(error as Error).message}`,
-    );
+      formatGraphQLErrors(
+        ((error as Record<string, unknown>).graphQLErrors as unknown[]) ?? [],
+      ),
+      (() => {
+        const body = (error as { responseBody?: unknown }).responseBody;
+        if (!body) {
+          return null;
+        }
+        try {
+          return `Response body: ${JSON.stringify(body, null, 2)}`;
+        } catch {
+          return `Response body: ${String(body)}`;
+        }
+      })(),
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    await logError(message);
     throw error;
   }
 }
@@ -89,7 +107,7 @@ export async function syncFulfillmentOrderState({
 }: {
   shop: string;
   topic: string;
-  graphql: GraphqlClient;
+  graphql: GraphQLClient;
   fulfillmentOrderId: string;
 }) {
   const state = await fetchFulfillmentState(graphql, fulfillmentOrderId);
@@ -134,21 +152,13 @@ function extractFulfillmentOrderResource(payload: unknown):
 }
 
 async function fetchFulfillmentState(
-  graphql: GraphqlClient,
+  graphql: GraphQLClient,
   fulfillmentOrderId: string,
 ): Promise<{ order: OrderSnapshot; fulfillmentOrder: FulfillmentOrderSnapshot } | undefined> {
-  const response = await graphql(FULFILLMENT_STATE_QUERY, {
-    variables: { fulfillmentOrderId },
-  });
-
-  const json = await response.json();
-  if (json.errors?.length) {
-    throw new Error(
-      json.errors.map((error: { message: string }) => error.message).join(", "),
-    );
-  }
-
-  const data = json.data as { fulfillmentOrder?: any } | undefined;
+  const data = await graphql<{ fulfillmentOrder?: any }>(
+    FULFILLMENT_STATE_QUERY,
+    { fulfillmentOrderId },
+  );
 
   if (!data?.fulfillmentOrder?.order) {
     return undefined;
@@ -376,8 +386,11 @@ function parseDate(value?: string | null) {
 }
 
 function toGid(model: string, id: number | string): string {
-  const numericId = typeof id === "string" ? id.trim() : String(id);
-  return `gid://shopify/${model}/${numericId}`;
+  const value = typeof id === "string" ? id.trim() : String(id);
+  if (value.toLowerCase().startsWith("gid://")) {
+    return value;
+  }
+  return `gid://shopify/${model}/${value}`;
 }
 
 const FULFILLMENT_STATE_QUERY = `#graphql
