@@ -63,3 +63,38 @@ Document each mock action clearly in the UI so demo viewers know it represents a
 
 - After executing `CREATE_FULFILLMENT`, the Admin API returns `orderStatus: FULFILLED` with `fulfillmentStatus: null`, whereas the published diagram implies `fulfillmentStatus: SUCCESS`. We treat Shopify’s response as canonical and persist the `FULFILLED/null` combination to avoid false mismatch errors.
 - The “Place hold” transition only succeeds while the fulfillment order request status is `UNSUBMITTED`. Once the merchant presses “Request fulfillment” in Shopify Admin (transitioning the request status to `SUBMITTED`), Shopify rejects hold attempts.
+
+
+## Behaviour
+
+### Webhooks
+
+> Webhook topics never run through the local applyTransition helpers. Instead, every webhook (or manual sync after an API call) makes Shopify the
+  source of truth and then we persist whatever Shopify sends back:
+
+- app/routes/webhooks.fulfillment_orders.$topic.tsx receives the POST and delegates to handleFulfillmentOrderWebhook.
+- app/services/fulfillmentWebhooks.ts:40-343 unwraps the payload, calls syncFulfillmentOrderState, fetches the order/fulfillment order state from
+  Shopify (fetchFulfillmentState), and then persistState writes those values straight into Prisma:
+  - FulfillmentOrderRecord is updated with the raw status/request status, supported actions, latestFulfillmentId, tracking JSON, etc.
+  - FulfillmentStateSnapshot is overwritten with the current composite state (mapToCompositeState).
+  - We compare the previous snapshot to the new one; if they differ for a manual topic (our simulator), we log a mismatch, otherwise we store a
+  STATE_CHANGE log entry.
+
+  So you won’t find a webhook-specific call to applyTransition. Webhooks don’t predict state changes; they simply reconcile with Shopify's response
+  and overwrite our snapshot/log.
+
+### Actions
+
+Triggered in the UI, the transition the state machine and execute the action (GraphQL mutations in Shopify), to apply the desired changes and actions in Shopify.
+
+The are triggered in the `export const action = async ({ request }: ActionFunctionArgs) => {` handler.
+Looke for :
+
+```TypeScript
+await executeApiTransition({
+  transitionId,
+  fulfillmentOrderId,
+  graphql,
+  formData,
+});
+```
