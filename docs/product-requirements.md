@@ -64,7 +64,6 @@ Document each mock action clearly in the UI so demo viewers know it represents a
 - After executing `CREATE_FULFILLMENT`, the Admin API returns `orderStatus: FULFILLED` with `fulfillmentStatus: null`, whereas the published diagram implies `fulfillmentStatus: SUCCESS`. We treat Shopify’s response as canonical and persist the `FULFILLED/null` combination to avoid false mismatch errors.
 - The “Place hold” transition only succeeds while the fulfillment order request status is `UNSUBMITTED`. Once the merchant presses “Request fulfillment” in Shopify Admin (transitioning the request status to `SUBMITTED`), Shopify rejects hold attempts.
 
-
 ## Behaviour
 
 ### Webhooks
@@ -98,6 +97,27 @@ await executeApiTransition({
   formData,
 });
 ```
+
+### Iventory Management in real Fulfillment Apps
+
+In a real Shopify fulfillment service:
+
+1. Automatic Updates: Shopify typically handles inventory decrements when fulfillmentCreateV2 is called
+2. Manual Adjustments: Use inventoryAdjustQuantities mutation if custom logic is needed
+3. Committed Quantities: Fulfillment requests may reserve inventory without immediately decrementing available quantities
+
+To Add Inventory Updates
+
+If you need explicit inventory management, you'd add inventory mutations to the fulfillment flow:
+
+mutation AdjustInventory($inventoryAdjustQuantitiesInput: InventoryAdjustQuantitiesInput!) {
+  inventoryAdjustQuantities(input: $inventoryAdjustQuantitiesInput) {
+    userErrors { message }
+    inventoryAdjustmentGroup { id }
+  }
+}
+
+Currently, this app simulates fulfillment workflows without custom inventory management, relying on Shopify's built-in behavior.
 
 ## The Codex Session
 
