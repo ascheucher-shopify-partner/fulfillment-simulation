@@ -98,3 +98,13 @@ await executeApiTransition({
   formData,
 });
 ```
+
+## The Codex Session
+
+In case we want to resume:
+
+```bash
+mkdir -p ~/.codex/sessions/2025/11/04
+cp rollout-2025-11-04T14-27-09-019a4f0c-ca70-70f3-b5cd-a80b20015ac1.jsonl ~/.codex/sessions/2025/11/04/rollout-2025-11-04T14-27-09-019a4f0c-ca70-70f3-b5cd-a80b20015ac1.jsonl
+codex resume 019a4f0c-ca70-70f3-b5cd-a80b20015ac1
+```
