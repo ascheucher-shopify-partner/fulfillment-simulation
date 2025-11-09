@@ -11,7 +11,11 @@
  * For UI extensions, use Sentry browser SDK directly.
  */
 
-import pino from 'pino';
+import pino, {
+  type TransportMultiOptions,
+  type TransportTargetOptions,
+  type redactOptions,
+} from 'pino';
 import * as Sentry from '@sentry/react-router';
 import { createRequire } from 'node:module';
 
@@ -22,7 +26,7 @@ const DEV_LOG_DESTINATION = '/tmp/fulfillment-simulation-dev.log';
 const devFileTransportTarget = require.resolve('./pino-dev-file-transport.cjs');
 
 
-const redactConfig = {
+const redactConfig: redactOptions = {
   paths: [
     // Authentication & Authorization
     'req.headers.authorization',
@@ -71,7 +75,7 @@ const redactConfig = {
     'req.body.patientData',
   ],
   remove: true,
-} as const;
+};
 
 const devTransport = isDevelopment ? createDevTransportConfig() : undefined;
 
@@ -115,8 +119,8 @@ const sentryHook = (data: any, level: number) => {
   }
 };
 
-function createDevTransportConfig() {
-  const targets = [
+function createDevTransportConfig(): TransportMultiOptions {
+  const targets: TransportTargetOptions[] = [
     {
       target: devFileTransportTarget,
       options: {
