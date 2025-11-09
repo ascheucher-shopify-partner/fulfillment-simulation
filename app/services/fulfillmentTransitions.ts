@@ -48,7 +48,7 @@ export async function createFulfillment(
   },
 ) {
   const data = await graphql<{
-    fulfillmentCreateV2: {
+    fulfillmentCreate: {
       fulfillment?: {
         id: string;
         status: string;
@@ -68,7 +68,7 @@ export async function createFulfillment(
     },
   });
 
-  return data.fulfillmentCreateV2;
+  return data.fulfillmentCreate;
 }
 
 export async function updateTrackingInfo(
@@ -224,9 +224,9 @@ const REJECT_FULFILLMENT_REQUEST = `#graphql
 
 const CREATE_FULFILLMENT = `#graphql
   mutation CreateFulfillment(
-    $fulfillment: FulfillmentV2Input!
+    $fulfillment: FulfillmentInput!
   ) {
-    fulfillmentCreateV2(fulfillment: $fulfillment) {
+    fulfillmentCreate(fulfillment: $fulfillment) {
       fulfillment {
         id
         status
