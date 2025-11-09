@@ -9,7 +9,7 @@
  *   "level": 30,
  *   "time": "2025-10-21T18:00:36.815Z",
  *   "env": "production",
- *   "service": "webshop-fulfillment-shopify",
+ *   "service": "fulfillment-simulation-shopify",
  *   "method": "POST",
  *   "url": "/api/foundationhealth/webhooks",
  *   "status": 200,
