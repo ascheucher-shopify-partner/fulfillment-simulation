@@ -163,7 +163,7 @@ export const logger = pino({
   // Base context for all logs
   base: {
     env: process.env.NODE_ENV,
-    service: 'webshop-fulfillment-shopify',
+    service: 'fulfillment-simulation-shopify',
   },
 
   // Hooks for custom behavior
