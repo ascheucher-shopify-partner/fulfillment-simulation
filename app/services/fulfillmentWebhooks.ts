@@ -1,5 +1,3 @@
-import type { Order } from "../types/admin.types";
-
 import prisma from "../db.server";
 import shopify from "../shopify.server";
 import {
@@ -13,6 +11,10 @@ import type {
   OrderDisplayFinancialStatus,
   OrderDisplayFulfillmentStatus,
 } from "../types/admin.types";
+import type {
+  FulfillmentStateQuery,
+  FulfillmentStateQueryVariables,
+} from "../types/admin.generated";
 import type { FulfillmentCompositeState } from "./stateMachine";
 import { logError, logInfo } from "./logger";
 
@@ -157,56 +159,41 @@ async function fetchFulfillmentState(
   graphql: GraphQLClient,
   fulfillmentOrderId: string,
 ): Promise<{ order: OrderSnapshot; fulfillmentOrder: FulfillmentOrderSnapshot } | undefined> {
-  const data = await graphql<{ fulfillmentOrder?: any }>(
+  const data = await graphql<FulfillmentStateQuery>(
     FULFILLMENT_STATE_QUERY,
-    { fulfillmentOrderId },
+    { fulfillmentOrderId } satisfies FulfillmentStateQueryVariables,
   );
 
-  if (!data?.fulfillmentOrder?.order) {
+  const fulfillmentOrder = data.fulfillmentOrder;
+  const order = fulfillmentOrder?.order;
+  if (!fulfillmentOrder || !order) {
     return undefined;
   }
-
-  const fo = data.fulfillmentOrder;
-  const order = fo.order as Order;
 
   const orderSnapshot: OrderSnapshot = {
     id: order.id,
     name: order.name ?? null,
-    displayFulfillmentStatus:
-      (order.displayFulfillmentStatus as OrderDisplayFulfillmentStatus | null) ??
-      null,
-    displayFinancialStatus:
-      (order.displayFinancialStatus as OrderDisplayFinancialStatus | null) ?? null,
+    displayFulfillmentStatus: (order.displayFulfillmentStatus as OrderDisplayFulfillmentStatus | null) ?? null,
+    displayFinancialStatus: (order.displayFinancialStatus as OrderDisplayFinancialStatus | null) ?? null,
     processedAt: order.processedAt ?? null,
     currencyCode: order.currencyCode ?? null,
     customer: order.customer ?? null,
   };
 
-  const rawSupportedActions = (fo.supportedActions ?? []) as Array<
-    | { action?: string; externalUrl?: string | null }
-    | string
-  >;
+  const supportedActions = fulfillmentOrder.supportedActions.map((entry) => ({
+    action: entry.action,
+    externalUrl: entry.externalUrl ?? null,
+  }));
 
-  const supportedActions = rawSupportedActions.map((entry) => {
-    if (typeof entry === "string") {
-      return { action: entry, externalUrl: null };
-    }
-    return {
-      action: entry?.action ?? "UNKNOWN",
-      externalUrl: entry?.externalUrl ?? null,
-    };
-  });
-
-  const fulfillmentsConnection = fo.fulfillments;
-  const latestFulfillment = extractLatestFulfillment(fulfillmentsConnection);
+  const latestFulfillment = extractLatestFulfillment(fulfillmentOrder.fulfillments);
 
   const fulfillmentOrderSnapshot: FulfillmentOrderSnapshot = {
-    id: fo.id,
-    status: fo.status as FulfillmentOrderStatus,
-    requestStatus: fo.requestStatus as FulfillmentOrderRequestStatus,
-    fulfillAt: fo.fulfillAt ?? null,
+    id: fulfillmentOrder.id,
+    status: fulfillmentOrder.status as FulfillmentOrderStatus,
+    requestStatus: fulfillmentOrder.requestStatus as FulfillmentOrderRequestStatus,
+    fulfillAt: fulfillmentOrder.fulfillAt ?? null,
     supportedActions,
-    assignedLocationId: fo.assignedLocation?.location?.id ?? null,
+    assignedLocationId: fulfillmentOrder.assignedLocation?.location?.id ?? null,
     latestFulfillmentId: latestFulfillment.id,
     latestTrackingJson: latestFulfillment.trackingJson,
   };
@@ -345,17 +332,15 @@ async function persistState({
   }
 }
 
-function extractLatestFulfillment(
-  connection: unknown,
-): { id: string | null; trackingJson: string | null } {
-  if (!connection || typeof connection !== "object") {
-    return { id: null, trackingJson: null };
-  }
+type FulfillmentConnection = NonNullable<
+  FulfillmentStateQuery["fulfillmentOrder"]
+>["fulfillments"];
 
-  const edges = (connection as {
-    edges?: Array<{ node?: { id?: string | null; trackingInfo?: unknown } | null }>;
-  }).edges;
-  if (!Array.isArray(edges) || edges.length === 0) {
+function extractLatestFulfillment(
+  connection?: FulfillmentConnection,
+): { id: string | null; trackingJson: string | null } {
+  const edges = connection?.edges ?? [];
+  if (edges.length === 0) {
     return { id: null, trackingJson: null };
   }
 
@@ -373,44 +358,28 @@ function extractLatestFulfillment(
   return { id: null, trackingJson: null };
 }
 
-function normalizeTrackingInfo(raw: unknown): Array<{
+type TrackingInfoEntry = NonNullable<
+  FulfillmentConnection["edges"][number]
+>["node"]["trackingInfo"][number];
+
+function normalizeTrackingInfo(
+  raw: TrackingInfoEntry[] | undefined,
+): Array<{
   number: string | null;
   url: string | null;
   company: string | null;
 }> {
-  if (!Array.isArray(raw)) {
+  if (!raw || raw.length === 0) {
     return [];
   }
 
-  const normalized: Array<{
-    number: string | null;
-    url: string | null;
-    company: string | null;
-  }> = [];
-
-  for (const entry of raw) {
-    if (!entry || typeof entry !== "object") {
-      continue;
-    }
-
-    const value = entry as {
-      number?: unknown;
-      url?: unknown;
-      company?: unknown;
-    };
-
-    const item = {
-      number: typeof value.number === "string" ? value.number : null,
-      url: typeof value.url === "string" ? value.url : null,
-      company: typeof value.company === "string" ? value.company : null,
-    };
-
-    if (item.number || item.url || item.company) {
-      normalized.push(item);
-    }
-  }
-
-  return normalized;
+  return raw
+    .map((entry) => ({
+      number: entry.number ?? null,
+      url: entry.url ?? null,
+      company: entry.company ?? null,
+    }))
+    .filter((item) => item.number || item.url || item.company);
 }
 
 function mapToCompositeState({

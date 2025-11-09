@@ -50,6 +50,10 @@ import type {
   FulfillmentOrderHoldInput,
   FulfillmentTrackingInput,
 } from "../types/admin.types";
+import type {
+  FulfillmentOrderLineItemsQuery,
+  FulfillmentOrderLineItemsQueryVariables,
+} from "../types/admin.generated";
 
 const SUPPORTED_TRANSITIONS: TransitionId[] = [
   "ACCEPT_FULFILLMENT_REQUEST",
@@ -652,27 +656,15 @@ async function fetchFulfillmentOrderLineItems(
   graphql: GraphQLClient,
   fulfillmentOrderId: string,
 ) {
-  const data = await graphql<{
-    fulfillmentOrder?: {
-      lineItems?: {
-        edges: Array<{
-          node?: {
-            id: string;
-            remainingQuantity: number;
-          };
-        }>;
-      };
-    };
-  }>(FULFILLMENT_ORDER_LINE_ITEMS_QUERY, { fulfillmentOrderId });
+  const data = await graphql<FulfillmentOrderLineItemsQuery>(
+    FULFILLMENT_ORDER_LINE_ITEMS_QUERY,
+    { fulfillmentOrderId } satisfies FulfillmentOrderLineItemsQueryVariables,
+  );
 
-  const edges = data.fulfillmentOrder?.lineItems?.edges ?? [];
-  const nodes = edges.flatMap((edge) =>
-    edge?.node ? [edge.node] : [],
-  ) as Array<{ id: string; remainingQuantity: number }>;
-
-  const lineItems = nodes.map((node) => ({
-    id: node.id,
-    quantity: node.remainingQuantity,
+  const edges = data.fulfillmentOrder?.lineItems.edges ?? [];
+  const lineItems = edges.map((edge) => ({
+    id: edge.node.id,
+    quantity: edge.node.remainingQuantity,
   }));
 
   if (lineItems.length === 0) {
