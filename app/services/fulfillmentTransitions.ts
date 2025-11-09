@@ -1,42 +1,73 @@
 import type { GraphQLClient } from "../lib/graphqlClient";
 import type {
+  AcceptCancellationRequestMutation,
+  AcceptCancellationRequestMutationVariables,
+  AcceptFulfillmentRequestMutation,
+  AcceptFulfillmentRequestMutationVariables,
+  CancelFulfillmentMutation,
+  CancelFulfillmentMutationVariables,
+  CloseFulfillmentOrderMutation,
+  CloseFulfillmentOrderMutationVariables,
+  CreateFulfillmentMutation,
+  CreateFulfillmentMutationVariables,
+  PlaceFulfillmentHoldMutation,
+  PlaceFulfillmentHoldMutationVariables,
+  RejectCancellationRequestMutation,
+  RejectCancellationRequestMutationVariables,
+  RejectFulfillmentRequestMutation,
+  RejectFulfillmentRequestMutationVariables,
+  ReleaseFulfillmentHoldMutation,
+  ReleaseFulfillmentHoldMutationVariables,
+  UpdateTrackingInfoMutation,
+  UpdateTrackingInfoMutationVariables,
+} from "../types/admin.generated";
+import type {
   FulfillmentOrderHoldInput,
   FulfillmentOrderLineItemsInput,
   FulfillmentTrackingInput,
 } from "../types/admin.types";
 
+function requirePayload<T>(payload: T | null | undefined, operation: string): T {
+  if (!payload) {
+    throw new Error(`${operation} returned no data`);
+  }
+  return payload;
+}
+
 export async function acceptFulfillmentRequest(
   graphql: GraphQLClient,
   params: { fulfillmentOrderId: string; message?: string },
 ) {
-  const data = await graphql<{
-    fulfillmentOrderAcceptFulfillmentRequest: {
-      fulfillmentOrder: { id: string; status: string; requestStatus: string };
-      userErrors: Array<{ message: string }>;
-    };
-  }>(ACCEPT_FULFILLMENT_REQUEST, {
-    id: params.fulfillmentOrderId,
-    message: params.message,
-  });
+  const data = await graphql<AcceptFulfillmentRequestMutation>(
+    ACCEPT_FULFILLMENT_REQUEST,
+    {
+      id: params.fulfillmentOrderId,
+      message: params.message,
+    } satisfies AcceptFulfillmentRequestMutationVariables,
+  );
 
-  return data.fulfillmentOrderAcceptFulfillmentRequest;
+  return requirePayload(
+    data.fulfillmentOrderAcceptFulfillmentRequest,
+    "fulfillmentOrderAcceptFulfillmentRequest",
+  );
 }
 
 export async function rejectFulfillmentRequest(
   graphql: GraphQLClient,
   params: { fulfillmentOrderId: string; message?: string },
 ) {
-  const data = await graphql<{
-    fulfillmentOrderRejectFulfillmentRequest: {
-      fulfillmentOrder: { id: string; status: string; requestStatus: string };
-      userErrors: Array<{ message: string }>;
-    };
-  }>(REJECT_FULFILLMENT_REQUEST, {
-    id: params.fulfillmentOrderId,
-    message: params.message,
-  });
+  const data = await graphql<RejectFulfillmentRequestMutation>(
+    REJECT_FULFILLMENT_REQUEST,
+    {
+      id: params.fulfillmentOrderId,
+      message: params.message,
+    } satisfies RejectFulfillmentRequestMutationVariables,
+  );
 
-  return data.fulfillmentOrderRejectFulfillmentRequest;
+  return requirePayload(
+    data.fulfillmentOrderRejectFulfillmentRequest,
+    "fulfillmentOrderRejectFulfillmentRequest",
+  );
 }
 
 export async function createFulfillment(
@@ -47,28 +78,18 @@ export async function createFulfillment(
     trackingInfo?: FulfillmentTrackingInput;
   },
 ) {
-  const data = await graphql<{
-    fulfillmentCreate: {
-      fulfillment?: {
-        id: string;
-        status: string;
-        trackingInfo?: Array<{
-          number?: string | null;
-          url?: string | null;
-          company?: string | null;
-        }> | null;
-      } | null;
-      userErrors: Array<{ message: string }>;
-    };
-  }>(CREATE_FULFILLMENT, {
-    fulfillment: {
-      notifyCustomer: params.notifyCustomer ?? false,
-      trackingInfo: params.trackingInfo ?? null,
-      lineItemsByFulfillmentOrder: params.lineItems,
-    },
-  });
+  const data = await graphql<CreateFulfillmentMutation>(
+    CREATE_FULFILLMENT,
+    {
+      fulfillment: {
+        notifyCustomer: params.notifyCustomer ?? false,
+        trackingInfo: params.trackingInfo ?? null,
+        lineItemsByFulfillmentOrder: params.lineItems,
+      },
+    } satisfies CreateFulfillmentMutationVariables,
+  );
 
-  return data.fulfillmentCreate;
+  return requirePayload(data.fulfillmentCreate, "fulfillmentCreate");
 }
 
 export async function updateTrackingInfo(
@@ -79,117 +100,113 @@ export async function updateTrackingInfo(
     notifyCustomer?: boolean;
   },
 ) {
-  const data = await graphql<{
-    fulfillmentTrackingInfoUpdate: {
-      fulfillment?: {
-        id: string;
-        status: string;
-        trackingInfo?: Array<{
-          number?: string | null;
-          url?: string | null;
-          company?: string | null;
-        }> | null;
-      } | null;
-      userErrors: Array<{ message: string }>;
-    };
-  }>(UPDATE_TRACKING_INFO, {
-    fulfillmentId: params.fulfillmentId,
-    trackingInfoInput: params.trackingInfo,
-    notifyCustomer: params.notifyCustomer ?? false,
-  });
+  const data = await graphql<UpdateTrackingInfoMutation>(
+    UPDATE_TRACKING_INFO,
+    {
+      fulfillmentId: params.fulfillmentId,
+      trackingInfoInput: params.trackingInfo,
+      notifyCustomer: params.notifyCustomer ?? false,
+    } satisfies UpdateTrackingInfoMutationVariables,
+  );
 
-  return data.fulfillmentTrackingInfoUpdate;
+  return requirePayload(
+    data.fulfillmentTrackingInfoUpdate,
+    "fulfillmentTrackingInfoUpdate",
+  );
 }
 
 export async function cancelFulfillment(
   graphql: GraphQLClient,
   fulfillmentId: string,
 ) {
-  const data = await graphql<{
-    fulfillmentCancel: {
-      fulfillment?: { id: string; status: string } | null;
-      userErrors: Array<{ message: string }>;
-    };
-  }>(CANCEL_FULFILLMENT, { id: fulfillmentId });
+  const data = await graphql<CancelFulfillmentMutation>(
+    CANCEL_FULFILLMENT,
+    { id: fulfillmentId } satisfies CancelFulfillmentMutationVariables,
+  );
 
-  return data.fulfillmentCancel;
+  return requirePayload(data.fulfillmentCancel, "fulfillmentCancel");
 }
 
 export async function acceptCancellationRequest(
   graphql: GraphQLClient,
   params: { fulfillmentOrderId: string; message?: string },
 ) {
-  const data = await graphql<{
-    fulfillmentOrderAcceptCancellationRequest: {
-      fulfillmentOrder: { id: string; status: string; requestStatus: string };
-      userErrors: Array<{ message: string }>;
-    };
-  }>(ACCEPT_CANCELLATION_REQUEST, params);
+  const data = await graphql<AcceptCancellationRequestMutation>(
+    ACCEPT_CANCELLATION_REQUEST,
+    params satisfies AcceptCancellationRequestMutationVariables,
+  );
 
-  return data.fulfillmentOrderAcceptCancellationRequest;
+  return requirePayload(
+    data.fulfillmentOrderAcceptCancellationRequest,
+    "fulfillmentOrderAcceptCancellationRequest",
+  );
 }
 
 export async function rejectCancellationRequest(
   graphql: GraphQLClient,
   params: { fulfillmentOrderId: string; message?: string },
 ) {
-  const data = await graphql<{
-    fulfillmentOrderRejectCancellationRequest: {
-      fulfillmentOrder: { id: string; status: string; requestStatus: string };
-      userErrors: Array<{ message: string }>;
-    };
-  }>(REJECT_CANCELLATION_REQUEST, params);
+  const data = await graphql<RejectCancellationRequestMutation>(
+    REJECT_CANCELLATION_REQUEST,
+    params satisfies RejectCancellationRequestMutationVariables,
+  );
 
-  return data.fulfillmentOrderRejectCancellationRequest;
+  return requirePayload(
+    data.fulfillmentOrderRejectCancellationRequest,
+    "fulfillmentOrderRejectCancellationRequest",
+  );
 }
 
 export async function placeFulfillmentHold(
   graphql: GraphQLClient,
   params: { fulfillmentOrderId: string; hold: FulfillmentOrderHoldInput },
 ) {
-  const data = await graphql<{
-    fulfillmentOrderHold: {
-      fulfillmentOrder: { id: string; status: string };
-      userErrors: Array<{ message: string }>;
-    };
-  }>(PLACE_FULFILLMENT_HOLD, {
-    id: params.fulfillmentOrderId,
-    fulfillmentHold: params.hold,
-  });
+  const data = await graphql<PlaceFulfillmentHoldMutation>(
+    PLACE_FULFILLMENT_HOLD,
+    {
+      id: params.fulfillmentOrderId,
+      fulfillmentHold: params.hold,
+    } satisfies PlaceFulfillmentHoldMutationVariables,
+  );
 
-  return data.fulfillmentOrderHold;
+  return requirePayload(
+    data.fulfillmentOrderHold,
+    "fulfillmentOrderHold",
+  );
 }
 
 export async function releaseFulfillmentHold(
   graphql: GraphQLClient,
   params: { fulfillmentOrderId: string; holdIds?: string[]; externalId?: string },
 ) {
-  const data = await graphql<{
-    fulfillmentOrderReleaseHold: {
-      fulfillmentOrder: { id: string; status: string };
-      userErrors: Array<{ message: string }>;
-    };
-  }>(RELEASE_FULFILLMENT_HOLD, {
-    id: params.fulfillmentOrderId,
-    holdIds: params.holdIds,
-    externalId: params.externalId,
-  });
+  const data = await graphql<ReleaseFulfillmentHoldMutation>(
+    RELEASE_FULFILLMENT_HOLD,
+    {
+      id: params.fulfillmentOrderId,
+      holdIds: params.holdIds,
+      externalId: params.externalId,
+    } satisfies ReleaseFulfillmentHoldMutationVariables,
+  );
 
-  return data.fulfillmentOrderReleaseHold;
+  return requirePayload(
+    data.fulfillmentOrderReleaseHold,
+    "fulfillmentOrderReleaseHold",
+  );
 }
 
 export async function closeFulfillmentOrder(
   graphql: GraphQLClient,
   params: { fulfillmentOrderId: string; message?: string },
 ) {
-  const data = await graphql<{
-    fulfillmentOrderClose: {
-      fulfillmentOrder: { id: string; status: string; requestStatus: string };
-      userErrors: Array<{ message: string }>;
-    };
-  }>(CLOSE_FULFILLMENT_ORDER, params);
+  const data = await graphql<CloseFulfillmentOrderMutation>(
+    CLOSE_FULFILLMENT_ORDER,
+    params satisfies CloseFulfillmentOrderMutationVariables,
+  );
 
-  return data.fulfillmentOrderClose;
+  return requirePayload(
+    data.fulfillmentOrderClose,
+    "fulfillmentOrderClose",
+  );
 }
 
 const ACCEPT_FULFILLMENT_REQUEST = `#graphql
