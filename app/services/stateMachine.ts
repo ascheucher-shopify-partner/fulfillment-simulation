@@ -123,7 +123,7 @@ const transitions: TransitionDefinition[] = [
     id: "CREATE_FULFILLMENT",
     label: "Create fulfillment",
     description:
-      "Creates a fulfillment via fulfillmentCreateV2 (+ tracking optional).",
+      "Creates a fulfillment via fulfillmentCreate (+ tracking optional).",
     kind: "api",
     guard: (state) =>
       matches(state, {

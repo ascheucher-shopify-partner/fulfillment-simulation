@@ -148,6 +148,19 @@ export type FulfillmentOrderLineItemsQuery = { fulfillmentOrder?: AdminTypes.May
     & { lineItems: { edges: Array<{ node: Pick<AdminTypes.FulfillmentOrderLineItem, 'id' | 'remainingQuantity'> }> } }
   )> };
 
+export type FetchFulfillmentOriginAddressQueryVariables = AdminTypes.Exact<{
+  fulfillmentOrderId: AdminTypes.Scalars['ID']['input'];
+}>;
+
+
+export type FetchFulfillmentOriginAddressQuery = { fulfillmentOrder?: AdminTypes.Maybe<(
+    Pick<AdminTypes.FulfillmentOrder, 'id'>
+    & { assignedLocation: (
+      Pick<AdminTypes.FulfillmentOrderAssignedLocation, 'address1' | 'address2' | 'city' | 'countryCode' | 'province' | 'zip'>
+      & { location?: AdminTypes.Maybe<{ address: Pick<AdminTypes.LocationAddress, 'address1' | 'address2' | 'city' | 'countryCode' | 'provinceCode' | 'zip'> }> }
+    ) }
+  )> };
+
 export type AcceptFulfillmentRequestMutationVariables = AdminTypes.Exact<{
   id: AdminTypes.Scalars['ID']['input'];
   message?: AdminTypes.InputMaybe<AdminTypes.Scalars['String']['input']>;
@@ -171,7 +184,7 @@ export type CreateFulfillmentMutationVariables = AdminTypes.Exact<{
 
 export type CreateFulfillmentMutation = { fulfillmentCreate?: AdminTypes.Maybe<{ fulfillment?: AdminTypes.Maybe<(
       Pick<AdminTypes.Fulfillment, 'id' | 'status'>
-      & { trackingInfo: Array<Pick<AdminTypes.FulfillmentTrackingInfo, 'number' | 'url' | 'company'>> }
+      & { trackingInfo: Array<Pick<AdminTypes.FulfillmentTrackingInfo, 'number' | 'url' | 'company'>>, originAddress?: AdminTypes.Maybe<Pick<AdminTypes.FulfillmentOriginAddress, 'address1' | 'address2' | 'city' | 'zip' | 'provinceCode' | 'countryCode'>> }
     )>, userErrors: Array<Pick<AdminTypes.UserError, 'message'>> }> };
 
 export type UpdateTrackingInfoMutationVariables = AdminTypes.Exact<{
@@ -257,6 +270,7 @@ interface GeneratedQueryTypes {
   "#graphql\n      query ProvisionProductImages($id: ID!) {\n        product(id: $id) {\n          images(first: 10) {\n            nodes {\n              id\n              url\n            }\n          }\n        }\n      }\n    ": {return: ProvisionProductImagesQuery, variables: ProvisionProductImagesQueryVariables},
   "#graphql\n      query ProvisionProductByHandle($handle: String!) {\n        productByHandle(handle: $handle) {\n          id\n          title\n          variants(first: 1) {\n            edges {\n              node {\n                id\n                sku\n                inventoryItem {\n                  id\n                  tracked\n                }\n              }\n            }\n          }\n        }\n      }\n    ": {return: ProvisionProductByHandleQuery, variables: ProvisionProductByHandleQueryVariables},
   "#graphql\n  query FulfillmentOrderLineItems($fulfillmentOrderId: ID!) {\n    fulfillmentOrder(id: $fulfillmentOrderId) {\n      id\n      lineItems(first: 50) {\n        edges {\n          node {\n            id\n            remainingQuantity\n          }\n        }\n      }\n    }\n  }\n": {return: FulfillmentOrderLineItemsQuery, variables: FulfillmentOrderLineItemsQueryVariables},
+  "#graphql\n  query FetchFulfillmentOriginAddress($fulfillmentOrderId: ID!) {\n    fulfillmentOrder(id: $fulfillmentOrderId) {\n      id\n      assignedLocation {\n        address1\n        address2\n        city\n        countryCode\n        province\n        zip\n        location {\n          address {\n            address1\n            address2\n            city\n            countryCode\n            provinceCode\n            zip\n          }\n        }\n      }\n    }\n  }\n": {return: FetchFulfillmentOriginAddressQuery, variables: FetchFulfillmentOriginAddressQueryVariables},
   "#graphql\n  query FulfillmentState($fulfillmentOrderId: ID!) {\n    fulfillmentOrder(id: $fulfillmentOrderId) {\n      id\n      status\n      requestStatus\n      fulfillAt\n      supportedActions {\n        action\n        externalUrl\n      }\n      assignedLocation {\n        location {\n          id\n        }\n      }\n      fulfillments(first: 10) {\n        edges {\n          node {\n            id\n            status\n            trackingInfo {\n              number\n              url\n              company\n            }\n          }\n        }\n      }\n      order {\n        id\n        name\n        displayFulfillmentStatus\n        displayFinancialStatus\n        processedAt\n        currencyCode\n        customer {\n          firstName\n          lastName\n          email\n        }\n      }\n    }\n  }\n": {return: FulfillmentStateQuery, variables: FulfillmentStateQueryVariables},
 }
 
@@ -273,7 +287,7 @@ interface GeneratedMutationTypes {
   "#graphql\n      mutation ProvisionInventorySetOnHand(\n        $input: InventorySetOnHandQuantitiesInput!\n      ) {\n        inventorySetOnHandQuantities(input: $input) {\n          userErrors {\n            message\n          }\n        }\n      }\n    ": {return: ProvisionInventorySetOnHandMutation, variables: ProvisionInventorySetOnHandMutationVariables},
   "#graphql\n  mutation AcceptFulfillmentRequest($id: ID!, $message: String) {\n    fulfillmentOrderAcceptFulfillmentRequest(id: $id, message: $message) {\n      fulfillmentOrder {\n        id\n        status\n        requestStatus\n      }\n      userErrors {\n        message\n      }\n    }\n  }\n": {return: AcceptFulfillmentRequestMutation, variables: AcceptFulfillmentRequestMutationVariables},
   "#graphql\n  mutation RejectFulfillmentRequest($id: ID!, $message: String) {\n    fulfillmentOrderRejectFulfillmentRequest(id: $id, message: $message) {\n      fulfillmentOrder {\n        id\n        status\n        requestStatus\n      }\n      userErrors {\n        message\n      }\n    }\n  }\n": {return: RejectFulfillmentRequestMutation, variables: RejectFulfillmentRequestMutationVariables},
-  "#graphql\n  mutation CreateFulfillment(\n    $fulfillment: FulfillmentInput!\n  ) {\n    fulfillmentCreate(fulfillment: $fulfillment) {\n      fulfillment {\n        id\n        status\n        trackingInfo {\n          number\n          url\n          company\n        }\n      }\n      userErrors {\n        message\n      }\n    }\n  }\n": {return: CreateFulfillmentMutation, variables: CreateFulfillmentMutationVariables},
+  "#graphql\n  mutation CreateFulfillment(\n    $fulfillment: FulfillmentInput!\n  ) {\n    fulfillmentCreate(fulfillment: $fulfillment) {\n      fulfillment {\n        id\n        status\n        trackingInfo {\n          number\n          url\n          company\n        }\n        originAddress {\n          address1\n          address2\n          city\n          zip\n          provinceCode\n          countryCode\n        }\n      }\n      userErrors {\n        message\n      }\n    }\n  }\n": {return: CreateFulfillmentMutation, variables: CreateFulfillmentMutationVariables},
   "#graphql\n  mutation UpdateTrackingInfo(\n    $fulfillmentId: ID!\n    $trackingInfoInput: FulfillmentTrackingInput!\n    $notifyCustomer: Boolean\n  ) {\n    fulfillmentTrackingInfoUpdate(\n      fulfillmentId: $fulfillmentId\n      trackingInfoInput: $trackingInfoInput\n      notifyCustomer: $notifyCustomer\n    ) {\n      fulfillment {\n        id\n        status\n        trackingInfo {\n          number\n          url\n          company\n        }\n      }\n      userErrors {\n        message\n      }\n    }\n  }\n": {return: UpdateTrackingInfoMutation, variables: UpdateTrackingInfoMutationVariables},
   "#graphql\n  mutation CancelFulfillment($id: ID!) {\n    fulfillmentCancel(id: $id) {\n      fulfillment {\n        id\n        status\n      }\n      userErrors {\n        message\n      }\n    }\n  }\n": {return: CancelFulfillmentMutation, variables: CancelFulfillmentMutationVariables},
   "#graphql\n  mutation AcceptCancellationRequest($fulfillmentOrderId: ID!, $message: String) {\n    fulfillmentOrderAcceptCancellationRequest(\n      id: $fulfillmentOrderId\n      message: $message\n    ) {\n      fulfillmentOrder {\n        id\n        status\n        requestStatus\n      }\n      userErrors {\n        message\n      }\n    }\n  }\n": {return: AcceptCancellationRequestMutation, variables: AcceptCancellationRequestMutationVariables},

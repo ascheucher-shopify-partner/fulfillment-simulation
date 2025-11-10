@@ -1,4 +1,21 @@
-# Shopify App Template - React Router
+# Fulfillment Simulator
+
+The [requirements](docs/product-requirements.md) describe the app's behavior.
+
+Especially of interest:
+
+- [FulfillmentOrder mutations](https://shopify.dev/docs/api/admin-graphql/2026-01/objects/FulfillmentOrder#mutations)
+- [fulfillmentCreate](https://shopify.dev/docs/api/admin-graphql/unstable/mutations/fulfillmentCreate)
+- [fulfillmentTrackingInfoUpdate](https://shopify.dev/docs/api/admin-graphql/unstable/mutations/fulfillmentTrackingInfoUpdate)
+
+Find them in the simulator app:
+
+Mutation | File | Function
+-|-|-
+fulfillmentCreate | app/services/fulfillmentTransitions.ts | createFulfillment()
+fulfillmentTrackingInfoUpdate | app/services/fulfillmentTransitions.ts | updateTrackingInfo
+
+## Shopify App Template - React Router
 
 This is a template for building a [Shopify app](https://shopify.dev/docs/apps/getting-started) using [React Router](https://reactrouter.com/).  It was forked from the [Shopify Remix app template](https://github.com/Shopify/shopify-app-template-remix) and converted to React Router.
 

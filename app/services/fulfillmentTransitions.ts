@@ -10,6 +10,8 @@ import type {
   CloseFulfillmentOrderMutationVariables,
   CreateFulfillmentMutation,
   CreateFulfillmentMutationVariables,
+  FetchFulfillmentOriginAddressQuery,
+  FetchFulfillmentOriginAddressQueryVariables,
   PlaceFulfillmentHoldMutation,
   PlaceFulfillmentHoldMutationVariables,
   RejectCancellationRequestMutation,
@@ -24,6 +26,7 @@ import type {
 import type {
   FulfillmentOrderHoldInput,
   FulfillmentOrderLineItemsInput,
+  FulfillmentOriginAddressInput,
   FulfillmentTrackingInput,
 } from "../types/admin.types";
 
@@ -32,6 +35,44 @@ function requirePayload<T>(payload: T | null | undefined, operation: string): T 
     throw new Error(`${operation} returned no data`);
   }
   return payload;
+}
+
+async function fetchFulfillmentOriginAddress(
+  graphql: GraphQLClient,
+  fulfillmentOrderId: string,
+): Promise<FulfillmentOriginAddressInput> {
+  const data = await graphql<FetchFulfillmentOriginAddressQuery>(
+    FETCH_FULFILLMENT_ORIGIN_ADDRESS,
+    { fulfillmentOrderId } satisfies FetchFulfillmentOriginAddressQueryVariables,
+  );
+
+  const assignedLocation = data.fulfillmentOrder?.assignedLocation;
+  if (!assignedLocation) {
+    throw new Error(
+      `Fulfillment order ${fulfillmentOrderId} is missing an assigned location and cannot be fulfilled`,
+    );
+  }
+
+  const locationAddress = assignedLocation.location?.address;
+  const snapshotCountryCode = assignedLocation.countryCode;
+  const countryCode = locationAddress?.countryCode ?? snapshotCountryCode;
+
+  if (!countryCode) {
+    throw new Error(
+      `Unable to determine country for fulfillment order ${fulfillmentOrderId} assigned location`,
+    );
+  }
+
+  const originAddress: FulfillmentOriginAddressInput = {
+    address1: locationAddress?.address1 ?? assignedLocation.address1 ?? undefined,
+    address2: locationAddress?.address2 ?? assignedLocation.address2 ?? undefined,
+    city: locationAddress?.city ?? assignedLocation.city ?? undefined,
+    countryCode,
+    provinceCode: locationAddress?.provinceCode ?? assignedLocation.province ?? undefined,
+    zip: locationAddress?.zip ?? assignedLocation.zip ?? undefined,
+  };
+
+  return originAddress;
 }
 
 export async function acceptFulfillmentRequest(
@@ -78,12 +119,20 @@ export async function createFulfillment(
     trackingInfo?: FulfillmentTrackingInput;
   },
 ) {
+  const fulfillmentOrderId = params.lineItems[0]?.fulfillmentOrderId;
+  if (!fulfillmentOrderId) {
+    throw new Error("At least one fulfillment order line item is required to create a fulfillment.");
+  }
+
+  const originAddress = await fetchFulfillmentOriginAddress(graphql, fulfillmentOrderId);
+
   const data = await graphql<CreateFulfillmentMutation>(
     CREATE_FULFILLMENT,
     {
       fulfillment: {
         notifyCustomer: params.notifyCustomer ?? false,
         trackingInfo: params.trackingInfo ?? null,
+        originAddress,
         lineItemsByFulfillmentOrder: params.lineItems,
       },
     } satisfies CreateFulfillmentMutationVariables,
@@ -209,6 +258,32 @@ export async function closeFulfillmentOrder(
   );
 }
 
+const FETCH_FULFILLMENT_ORIGIN_ADDRESS = `#graphql
+  query FetchFulfillmentOriginAddress($fulfillmentOrderId: ID!) {
+    fulfillmentOrder(id: $fulfillmentOrderId) {
+      id
+      assignedLocation {
+        address1
+        address2
+        city
+        countryCode
+        province
+        zip
+        location {
+          address {
+            address1
+            address2
+            city
+            countryCode
+            provinceCode
+            zip
+          }
+        }
+      }
+    }
+  }
+`;
+
 const ACCEPT_FULFILLMENT_REQUEST = `#graphql
   mutation AcceptFulfillmentRequest($id: ID!, $message: String) {
     fulfillmentOrderAcceptFulfillmentRequest(id: $id, message: $message) {
@@ -251,6 +326,14 @@ const CREATE_FULFILLMENT = `#graphql
           number
           url
           company
+        }
+        originAddress {
+          address1
+          address2
+          city
+          zip
+          provinceCode
+          countryCode
         }
       }
       userErrors {
